@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Wake & Move</title>
+
+<!-- PWA: manifest + theme -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#15111f">
+
+<!-- PWA: icons -->
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<!-- PWA: iOS "add to home screen" behavior -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Wake & Move">
+<style>
+  :root{
+    --bg: #15111f;
+    --bg-raised: #1f1a2e;
+    --bg-raised-2: #2a2340;
+    --pink: #ff6fae;
+    --blue: #5b8cff;
+    --purple: #a78bfa;
+    --grad: linear-gradient(135deg, var(--pink), var(--purple) 55%, var(--blue));
+    --text: #f4f2fb;
+    --text-dim: #9891ae;
+    --line: #332c4a;
+    --danger: #ff6b5e;
+    --ok: #5fe0a8;
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{
+    margin:0; padding:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap{
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 48px 22px 80px;
+    min-height: 100vh;
+  }
+  .wrap.wide{ max-width: 1000px; }
+  .screen{ display:none; }
+  .screen.active{ display:block; }
+
+  .kicker{
+    color: var(--pink);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  h1{
+    font-size: clamp(28px, 4vw, 38px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px;
+    line-height: 1.12;
+  }
+  h1 span{
+    background: var(--grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .sub{
+    color: var(--text-dim);
+    font-size: 14.5px;
+    max-width: 46ch;
+    margin-bottom: 30px;
+    line-height: 1.6;
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    all: unset;
+    box-sizing: border-box;
+    cursor: pointer;
+    color: #fff;
+    font-weight: 700;
+    padding: 14px 22px;
+    border-radius: 12px;
+    font-size: 15px;
+    text-align: center;
+    display:inline-block;
+    background: var(--grad);
+  }
+  .btn:hover{ filter: brightness(1.06); }
+  .btn:disabled{ opacity:.35; cursor:not-allowed; filter:none; }
+  .btn.ghost{
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--line);
+    font-weight: 500;
+  }
+  .btn.ghost:hover{ border-color: var(--purple); color: var(--purple); }
+  .btn.block{ display:block; width:100%; }
+  .btn.sm{ padding: 9px 14px; font-size: 13px; border-radius: 9px; }
+  .row{ display:flex; gap: 10px; flex-wrap: wrap; }
+
+  /* ---------- Alarm list (screen: list) ---------- */
+  .top-row{
+    display:flex;
+    align-items:flex-start;
+    justify-content: space-between;
+    margin-bottom: 28px;
+  }
+  .fab{
+    all:unset;
+    cursor:pointer;
+    width: 44px; height:44px;
+    border-radius: 50%;
+    background: var(--grad);
+    color:#fff;
+    font-size: 22px;
+    font-weight: 700;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .fab:hover{ filter:brightness(1.08); }
+  .alarm-list{ display:flex; flex-direction:column; gap:10px; }
+  .alarm-row{
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 18px;
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    gap: 14px;
+    cursor: pointer;
+  }
+  .alarm-row.disabled{ opacity: 0.42; }
+  .alarm-row .info{ min-width:0; }
+  .alarm-time{ font-size: 30px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .alarm-meta{ font-size: 12.5px; color: var(--text-dim); margin-top: 3px; display:flex; gap:8px; flex-wrap:wrap; }
+  .alarm-right{ display:flex; align-items:center; gap:12px; flex-shrink:0; }
+
+  /* iOS-style toggle switch */
+  .switch{ position:relative; width:48px; height:28px; flex-shrink:0; }
+  .switch input{ opacity:0; width:0; height:0; }
+  .slider-toggle{
+    position:absolute; inset:0;
+    background: var(--bg-raised-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    transition: background .2s ease;
+    cursor:pointer;
+  }
+  .slider-toggle::before{
+    content:"";
+    position:absolute;
+    height:22px; width:22px;
+    left:2px; top:2px;
+    background: var(--text);
+    border-radius:50%;
+    transition: transform .2s ease;
+  }
+  .switch input:checked + .slider-toggle{ background: var(--grad); border-color: transparent; }
+  .switch input:checked + .slider-toggle::before{ transform: translateX(20px); background:#fff; }
+
+  .trash{
+    all:unset; cursor:pointer;
+    color: var(--text-dim);
+    font-size: 18px;
+    padding: 4px 6px;
+  }
+  .trash:hover{ color: var(--danger); }
+
+  .empty-state{
+    color: var(--text-dim);
+    font-size: 14px;
+    text-align:center;
+    padding: 60px 20px;
+    border: 1px dashed var(--line);
+    border-radius: 14px;
+    line-height:1.6;
+  }
+
+  .note{ font-size: 12.5px; color: var(--text-dim); line-height: 1.65; margin-top: 22px; }
+  .note b{ color: var(--text); font-weight:600; }
+
+  /* ---------- Edit alarm (screen: edit) ---------- */
+  .card{
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .field-label{ display:block; font-size: 12.5px; color: var(--text-dim); margin-bottom: 8px; }
+  input[type="time"]{
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 46px;
+    font-weight: 700;
+    font-family: inherit;
+    padding: 16px 18px;
+    width: 100%;
+  }
+  input[type="text"], select{
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    padding: 12px 14px;
+    width: 100%;
+  }
+  input[type="text"]:focus, input[type="time"]:focus, select:focus{
+    outline: 2px solid var(--purple); outline-offset: 1px;
+  }
+  .field{ margin-bottom: 18px; }
+  .sound-row{ display:flex; gap:10px; }
+  .sound-row select{ flex:1; }
+
+  /* ---------- Ringing screen (screen: ringing) ---------- */
+  #screenRinging .wrap{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; min-height:100vh; padding-top:0; padding-bottom:0;
+  }
+  .ring-clock{
+    font-size: clamp(64px, 16vw, 96px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    background: var(--grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .ring-label{ font-size: 16px; color: var(--text-dim); margin-bottom: 40px; }
+  .ring-pill{
+    display:inline-flex; align-items:center; gap:9px;
+    padding: 8px 18px;
+    border-radius: 999px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 46px;
+  }
+  .ring-pill .dot{
+    width:9px; height:9px; border-radius:50%;
+    background: var(--danger);
+    animation: pulse 1.2s infinite;
+  }
+  @keyframes pulse{
+    0%{ box-shadow: 0 0 0 0 rgba(255,107,94,.5); }
+    70%{ box-shadow: 0 0 0 9px rgba(255,107,94,0); }
+    100%{ box-shadow: 0 0 0 0 rgba(255,107,94,0); }
+  }
+  .ring-hint{ font-size: 13.5px; color: var(--text-dim); margin-top: 26px; max-width: 300px; line-height:1.6; }
+
+  /* ---------- Dance screen (screen: dance) ---------- */
+  .layout{ display:grid; grid-template-columns: 1.45fr 1fr; gap: 24px; align-items:start; }
+  @media (max-width: 780px){ .layout{ grid-template-columns: 1fr; } }
+  .stage{
+    position: relative; background:#000; border:1px solid var(--line);
+    border-radius: 16px; aspect-ratio: 4/3; overflow:hidden;
+  }
+  video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform: scaleX(-1); }
+  canvas{ position:absolute; inset:0; width:100%; height:100%; transform: scaleX(-1); }
+  .stage-empty{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:16px; color:var(--text-dim); text-align:center; padding:26px; font-size:13.5px; line-height:1.6;
+  }
+  .rec-badge{
+    position:absolute; top:14px; left:14px;
+    display:flex; align-items:center; gap:7px;
+    background: rgba(0,0,0,0.55);
+    padding:6px 12px; border-radius: 999px;
+    font-size:12.5px; font-weight:700; color:#fff;
+  }
+  .rec-badge .dot{ width:8px; height:8px; border-radius:50%; background:var(--danger); animation:pulse 1s infinite; }
+  .card-label{ font-size: 12.5px; color: var(--text-dim); margin-bottom: 12px; font-weight:600; }
+  .motion-value{ font-size: 42px; font-weight:700; line-height:1; font-variant-numeric: tabular-nums; }
+  .motion-value small{ font-size:19px; color:var(--text-dim); font-weight:500; }
+  .progress-track{ height:10px; background:var(--bg-raised-2); border-radius:6px; margin-top:16px; position:relative; overflow:hidden; }
+  .progress-fill{ position:absolute; inset:0 auto 0 0; width:0%; background:var(--grad); border-radius:6px; transition:width .12s linear; }
+  .state-label{ font-size:13px; color:var(--text-dim); margin-top:14px; min-height:18px; }
+  .state-label.active{ color: var(--pink); }
+  .meter{ position:relative; height:12px; background:var(--bg-raised-2); border-radius:7px; margin-top:10px; overflow:hidden; }
+  .meter-fill{ position:absolute; inset:0 auto 0 0; width:0%; background:var(--grad); border-radius:7px; transition:width .05s linear; }
+
+  /* ---------- Preview screen (screen: preview) ---------- */
+  .preview-video{
+    width:100%;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background:#000;
+    display:block;
+    transform: scaleX(-1);
+  }
+  .success-badge{
+    display:inline-flex; align-items:center; gap:9px;
+    padding: 8px 16px; border-radius: 999px;
+    background: rgba(95,224,168,0.12);
+    border: 1px solid rgba(95,224,168,0.3);
+    color: var(--ok);
+    font-size: 13px; font-weight:700;
+    margin-bottom: 20px;
+  }
+  .close-x{
+    all: unset;
+    position: absolute;
+    top: 4px; right: 22px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    display:flex; align-items:center; justify-content:center;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  .close-x:hover{ color: var(--text); border-color: var(--purple); }
+</style>
+</head>
+<body>
+
+<!-- ============ SCREEN: ALARM LIST ============ -->
+<div class="screen active" id="screenList">
+  <div class="wrap">
+    <div class="top-row">
+      <div>
+        <div class="kicker">Alarms</div>
+        <h1>Wake &amp; <span>Move</span></h1>
+      </div>
+      <button class="fab" id="addAlarmBtn" title="Add alarm">+</button>
+    </div>
+    <div class="alarm-list" id="alarmList"></div>
+    <div class="note">
+      <b>Known limitation:</b> browser tabs get suspended in the background or when the phone is locked,
+      so alarms may not fire reliably while asleep. A production version would need a native wrapper
+      (e.g. Capacitor) so the OS itself triggers the alarm. Use the alarm's <b>Test</b> button to try the full flow now.
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN: EDIT / ADD ALARM ============ -->
+<div class="screen" id="screenEdit">
+  <div class="wrap">
+    <div class="kicker" id="editKicker">New alarm</div>
+    <h1>Set your <span>alarm</span></h1>
+    <div class="sub">Pick a time, give it a label, and choose a sound — just like your phone's alarm.</div>
+
+    <div class="card">
+      <div class="field">
+        <label class="field-label">Time</label>
+        <input type="time" id="editTime">
+      </div>
+      <div class="field">
+        <label class="field-label">Label</label>
+        <input type="text" id="editLabel" placeholder="e.g. Morning workout">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label class="field-label">Sound</label>
+        <div class="sound-row">
+          <select id="editSound">
+            <option value="chimes">Chimes</option>
+            <option value="signal">Signal</option>
+            <option value="waves">Waves</option>
+            <option value="pulse">Pulse</option>
+          </select>
+          <button class="btn ghost sm" id="previewSoundBtn">Preview</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="btn" id="saveAlarmBtn">Save Alarm</button>
+      <button class="btn ghost" id="cancelEditBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN: ALARM RINGING (clock display) ============ -->
+<div class="screen" id="screenRinging">
+  <div class="wrap">
+    <div class="ring-pill"><div class="dot"></div>Alarm ringing</div>
+    <div class="ring-clock" id="ringClock">00:00</div>
+    <div class="ring-label" id="ringLabel">Alarm</div>
+    <button class="btn" id="continueManualBtn">I'm up — let's move</button>
+    <div class="ring-hint" id="ringHint">Pick up your phone or start moving — we'll detect it and take you to the move challenge automatically.</div>
+  </div>
+</div>
+
+<!-- ============ SCREEN: DANCE / MOVE CHALLENGE ============ -->
+<div class="screen" id="screenDance">
+  <div class="wrap wide">
+    <div class="kicker">Alarm ringing</div>
+    <h1>Time to <span>move</span></h1>
+    <div class="sub">Keep moving in a big, active way until the bar fills up. We're recording a short clip so you can see yourself afterward.</div>
+
+    <div class="layout">
+      <div class="stage" id="stage">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="rec-badge" id="recBadge" style="display:none;"><div class="dot"></div>REC</div>
+        <div class="stage-empty" id="stageEmpty">
+          <div>Camera access is needed to see you move.<br>Everything is processed locally — nothing is uploaded.</div>
+          <button class="btn" id="startCam">Enable Camera</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-label" style="display:flex; align-items:center; justify-content:space-between;">
+            <span>Move progress <span id="trackName" style="color:var(--text-dim); font-weight:400;"></span></span>
+            <button class="btn ghost sm" id="musicToggleBtn" style="padding:5px 10px; font-size:12px;">🔊 Music</button>
+          </div>
+          <div class="motion-value"><span id="progressSeconds">0.0</span><small>s / <span id="targetSeconds">8</span>s</small></div>
+          <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+          <div class="state-label" id="stateLabel">Waiting for camera…</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Live motion level</div>
+          <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+          <div class="note" style="margin-top:12px;">Progress only counts up — pausing to catch your breath won't cost you.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN: VIDEO PREVIEW ============ -->
+<div class="screen" id="screenPreview">
+  <div class="wrap" style="position:relative;">
+    <button class="close-x" id="closePreviewBtn" title="Exit" aria-label="Exit">✕</button>
+    <div class="success-badge">✓ Alarm dismissed</div>
+    <h1>Nice <span>moves</span></h1>
+    <div class="sub">Here's what we caught on camera. Save it if you want to keep it, then exit whenever you're ready.</div>
+    <video class="preview-video" id="previewVideo" controls playsinline></video>
+    <div class="row" style="margin-top:20px;">
+      <button class="btn" id="saveVideoBtn">Save video</button>
+      <button class="btn ghost" id="retakeBtn">↺ Retake</button>
+      <button class="btn ghost" id="exitPreviewBtn">Exit</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.20.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.20.0/dist/tf-converter.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.20.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+
+<script>
+(function(){
+
+  /* ============================================================
+     SCREEN MANAGEMENT
+     ============================================================ */
+  const screens = {
+    list: document.getElementById('screenList'),
+    edit: document.getElementById('screenEdit'),
+    ringing: document.getElementById('screenRinging'),
+    dance: document.getElementById('screenDance'),
+    preview: document.getElementById('screenPreview'),
+  };
+  function showScreen(name){
+    Object.values(screens).forEach(s=>s.classList.remove('active'));
+    screens[name].classList.add('active');
+  }
+
+  /* ============================================================
+     ALARM DATA + LIST SCREEN
+     ============================================================ */
+  let alarms = [
+    { id: cryptoId(), time: defaultTimeSoon(1), label: 'Wake up', sound: 'chimes', enabled: true, triggeredKey: null }
+  ];
+  let editingId = null; // null = creating new
+
+  function cryptoId(){ return Math.random().toString(36).slice(2,9); }
+  function defaultTimeSoon(minutesFromNow){
+    const d = new Date(Date.now() + minutesFromNow*60*1000);
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+  function formatTime12(hhmm){
+    const [h,m] = hhmm.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    let h12 = h % 12; if(h12===0) h12 = 12;
+    return `${h12}:${String(m).padStart(2,'0')} ${period}`;
+  }
+  const soundNames = { chimes:'Chimes', signal:'Signal', waves:'Waves', pulse:'Pulse' };
+
+  const alarmListEl = document.getElementById('alarmList');
+  function renderAlarmList(){
+    alarmListEl.innerHTML = '';
+    if(alarms.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = 'No alarms yet. Tap + to add one.';
+      alarmListEl.appendChild(empty);
+      return;
+    }
+    alarms
+      .slice()
+      .sort((a,b)=> a.time.localeCompare(b.time))
+      .forEach(alarm=>{
+        const row = document.createElement('div');
+        row.className = 'alarm-row' + (alarm.enabled ? '' : ' disabled');
+        row.innerHTML = `
+          <div class="info">
+            <div class="alarm-time">${formatTime12(alarm.time)}</div>
+            <div class="alarm-meta">
+              <span>${escapeHtml(alarm.label || 'Alarm')}</span>
+              <span>· ${soundNames[alarm.sound]}</span>
+            </div>
+          </div>
+          <div class="alarm-right">
+            <button class="btn ghost sm test-btn" data-id="${alarm.id}">Test</button>
+            <button class="trash" data-id="${alarm.id}" title="Delete">✕</button>
+            <label class="switch">
+              <input type="checkbox" class="toggle-input" data-id="${alarm.id}" ${alarm.enabled ? 'checked' : ''}>
+              <span class="slider-toggle"></span>
+            </label>
+          </div>
+        `;
+        row.querySelector('.info').addEventListener('click', ()=> openEdit(alarm.id));
+        row.querySelector('.test-btn').addEventListener('click', (e)=>{ e.stopPropagation(); startRinging(alarm); });
+        row.querySelector('.trash').addEventListener('click', (e)=>{
+          e.stopPropagation();
+          alarms = alarms.filter(a=>a.id !== alarm.id);
+          renderAlarmList();
+        });
+        row.querySelector('.toggle-input').addEventListener('click', (e)=> e.stopPropagation());
+        row.querySelector('.toggle-input').addEventListener('change', (e)=>{
+          alarm.enabled = e.target.checked;
+        });
+        alarmListEl.appendChild(row);
+      });
+  }
+  function escapeHtml(s){
+    const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+  }
+
+  document.getElementById('addAlarmBtn').addEventListener('click', ()=> openEdit(null));
+
+  function openEdit(id){
+    editingId = id;
+    const editKicker = document.getElementById('editKicker');
+    const timeInput = document.getElementById('editTime');
+    const labelInput = document.getElementById('editLabel');
+    const soundInput = document.getElementById('editSound');
+    if(id){
+      const a = alarms.find(a=>a.id===id);
+      editKicker.textContent = 'Edit alarm';
+      timeInput.value = a.time;
+      labelInput.value = a.label;
+      soundInput.value = a.sound;
+    } else {
+      editKicker.textContent = 'New alarm';
+      timeInput.value = defaultTimeSoon(1);
+      labelInput.value = '';
+      soundInput.value = 'chimes';
+    }
+    showScreen('edit');
+  }
+
+  document.getElementById('cancelEditBtn').addEventListener('click', ()=> showScreen('list'));
+
+  document.getElementById('saveAlarmBtn').addEventListener('click', ()=>{
+    const time = document.getElementById('editTime').value;
+    const label = document.getElementById('editLabel').value.trim();
+    const sound = document.getElementById('editSound').value;
+    if(!time) return;
+    if(editingId){
+      const a = alarms.find(a=>a.id===editingId);
+      a.time = time; a.label = label; a.sound = sound; a.triggeredKey = null;
+    } else {
+      alarms.push({ id: cryptoId(), time, label, sound, enabled: true, triggeredKey: null });
+    }
+    renderAlarmList();
+    showScreen('list');
+  });
+
+  document.getElementById('previewSoundBtn').addEventListener('click', ()=>{
+    const sound = document.getElementById('editSound').value;
+    playToneBurst(sound, 1200);
+  });
+
+  renderAlarmList();
+
+  /* ============================================================
+     ALARM SCHEDULER (checks every second)
+     ============================================================ */
+  setInterval(()=>{
+    if(screens.list.classList.contains('active') === false) return; // only auto-trigger from list screen
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const dayKey = now.toDateString() + ' ' + hhmm;
+    alarms.forEach(a=>{
+      if(a.enabled && a.time === hhmm && a.triggeredKey !== dayKey){
+        a.triggeredKey = dayKey;
+        startRinging(a);
+      }
+    });
+  }, 1000);
+
+  /* ============================================================
+     SOUND ENGINE (Web Audio, no external files)
+     ============================================================ */
+  let audioCtx = null, alarmInterval = null;
+  function getAudioCtx(){
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+  function beep(freq, duration, delay, gainVal){
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = freq;
+    gain.gain.value = gainVal || 0.05;
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(ctx.currentTime + delay);
+    osc.stop(ctx.currentTime + delay + duration);
+  }
+  const soundPatterns = {
+    chimes: ()=>{ beep(880,0.5,0); beep(1320,0.5,0.35); },
+    signal: ()=>{ beep(1000,0.12,0); beep(1000,0.12,0.18); beep(1000,0.12,0.36); },
+    waves:  ()=>{ beep(440,0.8,0,0.04); beep(660,0.8,0.3,0.04); },
+    pulse:  ()=>{ beep(760,0.16,0); beep(520,0.16,0.22); },
+  };
+  function playToneBurst(sound, totalMs){
+    (soundPatterns[sound] || soundPatterns.chimes)();
+  }
+  function startAlarmLoop(sound){
+    stopAlarmLoop();
+    playToneBurst(sound);
+    alarmInterval = setInterval(()=> playToneBurst(sound), 900);
+  }
+  function stopAlarmLoop(){
+    if(alarmInterval) clearInterval(alarmInterval);
+    alarmInterval = null;
+  }
+
+  /* ============================================================
+     RINGING SCREEN (clock display) + MOTION-TO-CONTINUE DETECTION
+     ============================================================ */
+  const ringClock = document.getElementById('ringClock');
+  const ringLabelEl = document.getElementById('ringLabel');
+  const ringHint = document.getElementById('ringHint');
+  let ringClockInterval = null;
+  let currentAlarm = null;
+  let motionListenerAttached = false;
+  let motionSamples = [];
+
+  function startRinging(alarm){
+    currentAlarm = alarm;
+    ringLabelEl.textContent = alarm.label || 'Alarm';
+    updateRingClock();
+    ringClockInterval = setInterval(updateRingClock, 1000);
+    startAlarmLoop(alarm.sound);
+    showScreen('ringing');
+    setupMotionDetection();
+  }
+
+  function updateRingClock(){
+    const now = new Date();
+    ringClock.textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  }
+
+  document.getElementById('continueManualBtn').addEventListener('click', ()=> proceedToDance());
+
+  function setupMotionDetection(){
+    motionSamples = [];
+    if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+      // iOS 13+: needs an explicit user gesture to request permission.
+      ringHint.textContent = 'Tap the button below to enable motion detection, or just tap "I\'m up".';
+      const permBtn = document.createElement('button');
+      permBtn.className = 'btn ghost';
+      permBtn.style.marginTop = '14px';
+      permBtn.textContent = 'Enable motion detection';
+      permBtn.addEventListener('click', async ()=>{
+        try{
+          const res = await DeviceMotionEvent.requestPermission();
+          if(res === 'granted'){
+            attachMotionListener();
+            permBtn.remove();
+            ringHint.textContent = "Pick up your phone or start moving — we'll detect it automatically.";
+          }
+        }catch(e){ /* ignore */ }
+      }, { once:true });
+      ringHint.insertAdjacentElement('afterend', permBtn);
+    } else if(typeof DeviceMotionEvent !== 'undefined'){
+      attachMotionListener();
+    } else {
+      ringHint.textContent = "This device doesn't expose motion data to the browser — tap \"I'm up\" to continue.";
+    }
+  }
+
+  function attachMotionListener(){
+    if(motionListenerAttached) return;
+    motionListenerAttached = true;
+    window.addEventListener('devicemotion', onDeviceMotion);
+  }
+  function detachMotionListener(){
+    motionListenerAttached = false;
+    window.removeEventListener('devicemotion', onDeviceMotion);
+  }
+  function onDeviceMotion(e){
+    const acc = e.accelerationIncludingGravity || e.acceleration;
+    if(!acc) return;
+    const magnitude = Math.abs(acc.x||0) + Math.abs(acc.y||0) + Math.abs(acc.z||0);
+    motionSamples.push(magnitude);
+    if(motionSamples.length > 12) motionSamples.shift();
+    if(motionSamples.length >= 6){
+      const avg = motionSamples.reduce((a,b)=>a+b,0)/motionSamples.length;
+      const variance = motionSamples.reduce((a,b)=>a+Math.pow(b-avg,2),0)/motionSamples.length;
+      if(variance > 6){ // phone picked up / shaking / walking
+        proceedToDance();
+      }
+    }
+  }
+
+  function proceedToDance(){
+    clearInterval(ringClockInterval);
+    detachMotionListener();
+    stopAlarmLoop();
+    showScreen('dance');
+    resetDanceState();
+    startDanceMusic();
+  }
+
+  /* ============================================================
+     BACKGROUND MUSIC — procedurally generated (no copyrighted audio),
+     just to keep energy up during the move challenge.
+     ============================================================ */
+  let musicCtx = null, musicMasterGain = null, musicInterval = null, musicStep = 0, musicOn = true, noiseBuffer = null;
+  let currentTrack = null;
+
+  function ensureMusicCtx(){
+    if(!musicCtx){
+      musicCtx = new (window.AudioContext || window.webkitAudioContext)();
+      musicMasterGain = musicCtx.createGain();
+      musicMasterGain.gain.value = 0.45;
+      musicMasterGain.connect(musicCtx.destination);
+    }
+  }
+  function getNoiseBuffer(){
+    if(!noiseBuffer){
+      const len = musicCtx.sampleRate * 0.1;
+      noiseBuffer = musicCtx.createBuffer(1, len, musicCtx.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for(let i=0;i<len;i++) data[i] = Math.random()*2-1;
+    }
+    return noiseBuffer;
+  }
+  function playKick(t){
+    const osc = musicCtx.createOscillator();
+    const g = musicCtx.createGain();
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(42, t+0.12);
+    g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+0.15);
+    osc.connect(g).connect(musicMasterGain);
+    osc.start(t); osc.stop(t+0.16);
+  }
+  function playHihat(t, open){
+    const src = musicCtx.createBufferSource();
+    src.buffer = getNoiseBuffer();
+    const filter = musicCtx.createBiquadFilter();
+    filter.type = 'highpass'; filter.frequency.value = 7000;
+    const g = musicCtx.createGain();
+    const dur = open ? 0.14 : 0.045;
+    g.gain.setValueAtTime(open ? 0.18 : 0.22, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+    src.connect(filter).connect(g).connect(musicMasterGain);
+    src.start(t); src.stop(t+dur+0.02);
+  }
+  function playNote(t, freq, dur, type, vol){
+    const osc = musicCtx.createOscillator();
+    osc.type = type || 'square';
+    osc.frequency.value = freq;
+    const g = musicCtx.createGain();
+    g.gain.setValueAtTime(vol || 0.14, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+    osc.connect(g).connect(musicMasterGain);
+    osc.start(t); osc.stop(t+dur+0.02);
+  }
+  // Cartoon-ish "boing" slide — the goofy bit
+  function playGlide(t, fromFreq, toFreq, dur, type){
+    const osc = musicCtx.createOscillator();
+    osc.type = type || 'triangle';
+    osc.frequency.setValueAtTime(fromFreq, t);
+    osc.frequency.exponentialRampToValueAtTime(toFreq, t+dur);
+    const g = musicCtx.createGain();
+    g.gain.setValueAtTime(0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+    osc.connect(g).connect(musicMasterGain);
+    osc.start(t); osc.stop(t+dur+0.02);
+  }
+
+  // A handful of short procedurally-defined tracks — original, no copyrighted audio.
+  // "lead" steps can be a frequency, null, or {glide:[from,to]} for a cartoon boing.
+  const TRACKS = [
+    {
+      name: 'Turbo Disco',
+      bpm: 140,
+      bassType: 'sawtooth', leadType: 'square',
+      kick:  [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
+      hihatOpenEvery: 4,
+      bass:  [110,null,110,146.83, null,110,null,98, 110,null,110,146.83, null,164.81,null,98],
+      lead:  [null,440,null,523.25, null,440,587.33,null, null,392,null,523.25, null,440,587.33,null],
+    },
+    {
+      name: 'Circus Bounce',
+      bpm: 112,
+      bassType: 'triangle', leadType: 'triangle',
+      kick:  [1,0,0,0, 0,0,1,0, 0,0,1,0, 0,0,0,0],
+      hihatOpenEvery: 8,
+      bass:  [130.81,null,164.81,null, 196,null,164.81,null, 130.81,null,164.81,null, 196,null,164.81,null],
+      lead:  [null,null,{glide:[300,900]},null, 523.25,null,659.25,null, null,null,{glide:[900,300]},null, 523.25,null,392,null],
+    },
+    {
+      name: '8-bit Sprint',
+      bpm: 152,
+      bassType: 'square', leadType: 'square',
+      kick:  [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+      hihatOpenEvery: 2,
+      bass:  [98,null,98,null, 130.81,null,98,null, 110,null,110,null, 146.83,null,110,null],
+      lead:  [523.25,587.33,659.25,783.99, 659.25,587.33,523.25,440, 523.25,587.33,659.25,880, 783.99,659.25,587.33,523.25],
+    },
+    {
+      name: 'Wacky Chase',
+      bpm: 132,
+      bassType: 'sawtooth', leadType: 'triangle',
+      kick:  [1,0,1,0, 0,0,1,0, 1,0,0,0, 0,1,0,0],
+      hihatOpenEvery: 3,
+      bass:  [110,null,164.81,null, 130.81,null,98,null, 110,null,164.81,null, 146.83,null,110,null],
+      lead:  [null,{glide:[220,660]},null,440, null,{glide:[660,220]},null,523.25, null,{glide:[220,880]},null,392, null,440,null,{glide:[440,110]}],
+    },
+  ];
+
+  let STEP_DUR = 60/128/4;
+
+  function scheduleMusicStep(){
+    const t = musicCtx.currentTime + 0.02;
+    const track = currentTrack;
+    if(track.kick[musicStep]) playKick(t);
+    playHihat(t, musicStep % track.hihatOpenEvery === 0);
+
+    const bassFreq = track.bass[musicStep];
+    if(bassFreq) playNote(t, bassFreq, STEP_DUR*3.5, track.bassType, 0.16);
+
+    const leadVal = track.lead[musicStep];
+    if(leadVal){
+      if(typeof leadVal === 'object' && leadVal.glide){
+        playGlide(t, leadVal.glide[0], leadVal.glide[1], STEP_DUR*2.2, track.leadType);
+      } else {
+        playNote(t, leadVal, STEP_DUR*1.8, track.leadType, 0.11);
+      }
+    }
+    musicStep = (musicStep + 1) % 16;
+  }
+  function startDanceMusic(){
+    ensureMusicCtx();
+    currentTrack = TRACKS[Math.floor(Math.random()*TRACKS.length)];
+    STEP_DUR = 60/currentTrack.bpm/4;
+    musicMasterGain.gain.value = musicOn ? 0.45 : 0;
+    musicStep = 0;
+    if(musicInterval) clearInterval(musicInterval);
+    scheduleMusicStep();
+    musicInterval = setInterval(scheduleMusicStep, STEP_DUR*1000);
+    const trackNameEl = document.getElementById('trackName');
+    if(trackNameEl) trackNameEl.textContent = '· ' + currentTrack.name;
+  }
+  function stopDanceMusic(){
+    if(musicInterval) clearInterval(musicInterval);
+    musicInterval = null;
+  }
+  document.getElementById('musicToggleBtn').addEventListener('click', (e)=>{
+    musicOn = !musicOn;
+    if(musicMasterGain) musicMasterGain.gain.value = musicOn ? 0.45 : 0;
+    e.target.textContent = musicOn ? '🔊 Music' : '🔇 Music';
+  });
+
+
+  /* ============================================================
+     DANCE / MOVE CHALLENGE SCREEN + VIDEO RECORDING
+     ============================================================ */
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+  const stageEmpty = document.getElementById('stageEmpty');
+  const startCamBtn = document.getElementById('startCam');
+  const progressSecondsEl = document.getElementById('progressSeconds');
+  const targetSecondsEl = document.getElementById('targetSeconds');
+  const progressFill = document.getElementById('progressFill');
+  const stateLabel = document.getElementById('stateLabel');
+  const meterFill = document.getElementById('meterFill');
+  const recBadge = document.getElementById('recBadge');
+
+  let detector = null;
+  let running = false;
+  let prevKeypoints = null;
+  let lastFrameTime = null;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let cameraStream = null;
+
+  const TARGET_SECONDS = 8;
+  const MOVE_THRESHOLD = 0.022; // fixed, not user-adjustable
+  const METER_MAX = 0.09;
+  const FILL_RATE = 1;
+  let progress = 0;
+  let alarmSolved = false;
+
+  targetSecondsEl.textContent = TARGET_SECONDS;
+
+  function resetDanceState(){
+    running = false;
+    prevKeypoints = null;
+    progress = 0;
+    alarmSolved = false;
+    recordedChunks = [];
+    progressFill.style.width = '0%';
+    progressSecondsEl.textContent = '0.0';
+    stateLabel.textContent = 'Waiting for camera…';
+    stateLabel.classList.remove('active');
+    stageEmpty.style.display = 'flex';
+    recBadge.style.display = 'none';
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
+
+  startCamBtn.addEventListener('click', async ()=>{
+    stateLabel.textContent = 'Requesting camera permission…';
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      cameraStream = stream;
+      video.srcObject = stream;
+      await video.play();
+      stageEmpty.style.display = 'none';
+      resizeCanvas();
+      stateLabel.textContent = 'Loading pose model…';
+      await setupDetector();
+      startRecording(stream);
+      running = true;
+      lastFrameTime = performance.now();
+      stateLabel.textContent = 'Tracking — get your whole body in frame and start moving';
+      loop();
+    }catch(err){
+      stateLabel.textContent = 'Camera failed to start: ' + err.message;
+    }
+  });
+
+  function startRecording(stream){
+    recordedChunks = [];
+    let mimeType = 'video/webm';
+    if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('video/webm;codecs=vp9')){
+      mimeType = 'video/webm;codecs=vp9';
+    }
+    try{
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
+    }catch(e){
+      mediaRecorder = new MediaRecorder(stream);
+    }
+    mediaRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.start();
+    recBadge.style.display = 'flex';
+  }
+
+  function stopRecordingAndShowPreview(){
+    stopDanceMusic();
+    if(!mediaRecorder) { goToPreviewFallback(); return; }
+    mediaRecorder.onstop = ()=>{
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const previewVideo = document.getElementById('previewVideo');
+      previewVideo.src = url;
+      window.__lastRecordingUrl = url;
+      window.__lastRecordingBlob = blob;
+      stopCamera();
+      showScreen('preview');
+    };
+    try{ mediaRecorder.stop(); }catch(e){ goToPreviewFallback(); }
+    recBadge.style.display = 'none';
+  }
+  function goToPreviewFallback(){
+    stopCamera();
+    showScreen('preview');
+  }
+  function stopCamera(){
+    running = false;
+    if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
+  }
+
+  function resizeCanvas(){
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  async function setupDetector(){
+    await tf.setBackend('webgl');
+    await tf.ready();
+    detector = await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+    );
+  }
+
+  function torsoSize(pose){
+    const ls = kp(pose,'left_shoulder'), rs = kp(pose,'right_shoulder');
+    const lh = kp(pose,'left_hip'), rh = kp(pose,'right_hip');
+    if(!ls||!rs||!lh||!rh) return null;
+    const shoulderMid = {x:(ls.x+rs.x)/2, y:(ls.y+rs.y)/2};
+    const hipMid = {x:(lh.x+rh.x)/2, y:(lh.y+rh.y)/2};
+    return Math.hypot(shoulderMid.x-hipMid.x, shoulderMid.y-hipMid.y) || null;
+  }
+  function kp(pose, name){
+    const p = pose.keypoints.find(k=>k.name===name);
+    if(!p || p.score < 0.3) return null;
+    return p;
+  }
+  function computeMovement(pose){
+    if(!prevKeypoints) return 0;
+    const size = torsoSize(pose);
+    if(!size) return 0;
+    let totalDisp = 0, count = 0;
+    pose.keypoints.forEach(p=>{
+      if(p.score < 0.3) return;
+      const prev = prevKeypoints[p.name];
+      if(prev){ totalDisp += Math.hypot(p.x-prev.x, p.y-prev.y); count++; }
+    });
+    if(count === 0) return 0;
+    return (totalDisp/count) / size;
+  }
+  function storeKeypoints(pose){
+    const map = {};
+    pose.keypoints.forEach(p=>{ if(p.score>=0.3) map[p.name] = {x:p.x,y:p.y}; });
+    prevKeypoints = map;
+  }
+  function drawSkeleton(pose){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const pairs = [
+      ['left_shoulder','right_shoulder'],['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
+      ['right_shoulder','right_elbow'],['right_elbow','right_wrist'],
+      ['left_shoulder','left_hip'],['right_shoulder','right_hip'],['left_hip','right_hip'],
+      ['left_hip','left_knee'],['left_knee','left_ankle'],
+      ['right_hip','right_knee'],['right_knee','right_ankle']
+    ];
+    ctx.strokeStyle = '#ff6fae';
+    ctx.lineWidth = 3;
+    pairs.forEach(([a,b])=>{
+      const pa = kp(pose,a), pb = kp(pose,b);
+      if(pa && pb){ ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); }
+    });
+    pose.keypoints.forEach(p=>{
+      if(p.score > 0.3){ ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fillStyle = '#f4f2fb'; ctx.fill(); }
+    });
+  }
+  function updateProgressUI(){
+    const pct = Math.min(100, (progress/TARGET_SECONDS)*100);
+    progressFill.style.width = pct + '%';
+    progressSecondsEl.textContent = progress.toFixed(1);
+  }
+  function updateMeterUI(movement){
+    meterFill.style.width = Math.min(100, (movement/METER_MAX)*100) + '%';
+  }
+
+  async function loop(){
+    if(!running) return;
+    const now = performance.now();
+    const dt = Math.min(0.2, (now - lastFrameTime)/1000);
+    lastFrameTime = now;
+
+    const poses = await detector.estimatePoses(video, { flipHorizontal:false });
+    if(poses.length > 0){
+      const pose = poses[0];
+      drawSkeleton(pose);
+      const movement = computeMovement(pose);
+      storeKeypoints(pose);
+      updateMeterUI(movement);
+
+      if(!alarmSolved){
+        if(movement > MOVE_THRESHOLD){
+          progress = Math.min(TARGET_SECONDS, progress + dt*FILL_RATE);
+          stateLabel.textContent = 'Moving — keep it up! 🕺';
+          stateLabel.classList.add('active');
+        } else {
+          stateLabel.textContent = 'Paused — resume moving to keep filling the bar';
+          stateLabel.classList.remove('active');
+        }
+        updateProgressUI();
+        if(progress >= TARGET_SECONDS){
+          alarmSolved = true;
+          stateLabel.textContent = 'Challenge complete 🎉';
+          stateLabel.classList.remove('active');
+          setTimeout(stopRecordingAndShowPreview, 500);
+          return;
+        }
+      }
+    } else {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      stateLabel.textContent = 'No person detected — adjust camera angle or lighting';
+      stateLabel.classList.remove('active');
+      prevKeypoints = null;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  /* ============================================================
+     PREVIEW SCREEN
+     ============================================================ */
+  document.getElementById('saveVideoBtn').addEventListener('click', ()=>{
+    if(!window.__lastRecordingBlob) return;
+    const a = document.createElement('a');
+    a.href = window.__lastRecordingUrl;
+    const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+    a.download = `wake-and-move-${stamp}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+  function exitPreview(){
+    if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
+    window.__lastRecordingUrl = null;
+    window.__lastRecordingBlob = null;
+    showScreen('list');
+  }
+  document.getElementById('exitPreviewBtn').addEventListener('click', exitPreview);
+  document.getElementById('closePreviewBtn').addEventListener('click', exitPreview);
+  document.getElementById('retakeBtn').addEventListener('click', ()=>{
+    if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
+    window.__lastRecordingUrl = null;
+    window.__lastRecordingBlob = null;
+    showScreen('dance');
+    resetDanceState();
+    startDanceMusic();
+  });
+
+})();
+</script>
+
+<script>
+  // PWA: register service worker for offline app-shell caching + installability
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(err => {
+        console.warn('Service worker registration failed:', err);
+      });
+    });
+  }
+</script>
+</body>
+</html>
