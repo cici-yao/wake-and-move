@@ -225,6 +225,36 @@
   .field{ margin-bottom: 18px; }
   .sound-row{ display:flex; gap:10px; }
   .sound-row select{ flex:1; }
+  .segmented{
+    display:flex;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .segmented-option{
+    all: unset;
+    flex: 1;
+    text-align:center;
+    padding: 10px 6px;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .segmented-option small{
+    display:block;
+    font-size: 11px;
+    font-weight: 500;
+    opacity: 0.75;
+    margin-top: 2px;
+  }
+  .segmented-option.selected{
+    background: var(--grad);
+    color: #fff;
+  }
 
   /* ---------- Ringing screen (screen: ringing) ---------- */
   #screenRinging .wrap{
@@ -382,6 +412,27 @@
       </div>
     </div>
 
+    <div class="card">
+      <div class="field">
+        <label class="field-label">Wake-up difficulty</label>
+        <div class="segmented" id="difficultySegmented">
+          <button type="button" class="segmented-option" data-value="easy">Easy<small>5s</small></button>
+          <button type="button" class="segmented-option" data-value="medium">Medium<small>8s</small></button>
+          <button type="button" class="segmented-option" data-value="hard">Hard<small>10s</small></button>
+        </div>
+        <div class="note" style="margin-top:10px;">How long you need to keep moving before the alarm gives up on you.</div>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label class="field-label">Move-challenge music</label>
+        <select id="editMusicGenre">
+          <option value="energetic">Energetic (upbeat electronic)</option>
+          <option value="lyrical">Lyrical (soft & mellow)</option>
+          <option value="playful">Playful (goofy & bouncy)</option>
+          <option value="retro">Retro (8-bit chiptune)</option>
+        </select>
+      </div>
+    </div>
+
     <div class="row">
       <button class="btn" id="saveAlarmBtn">Save Alarm</button>
       <button class="btn ghost" id="cancelEditBtn">Cancel</button>
@@ -492,7 +543,7 @@
     }catch(e){ console.warn('Could not read saved alarms:', e); }
     // first run / nothing saved yet — seed with one example alarm
     return [
-      { id: cryptoId(), time: defaultTimeSoon(1), label: 'Wake up', sound: 'chimes', enabled: true, triggeredKey: null }
+      { id: cryptoId(), time: defaultTimeSoon(1), label: 'Wake up', sound: 'chimes', difficulty: 'medium', musicGenre: 'energetic', enabled: true, triggeredKey: null }
     ];
   }
   function saveAlarms(){
@@ -516,6 +567,9 @@
     return `${h12}:${String(m).padStart(2,'0')} ${period}`;
   }
   const soundNames = { chimes:'Chimes', signal:'Signal', waves:'Waves', pulse:'Pulse' };
+  const difficultyLabels = { easy:'Easy', medium:'Medium', hard:'Hard' };
+  const difficultySeconds = { easy:5, medium:8, hard:10 };
+  const genreLabels = { energetic:'Energetic', lyrical:'Lyrical', playful:'Playful', retro:'Retro' };
 
   const alarmListEl = document.getElementById('alarmList');
   function renderAlarmList(){
@@ -539,6 +593,7 @@
             <div class="alarm-meta">
               <span>${escapeHtml(alarm.label || 'Alarm')}</span>
               <span>· ${soundNames[alarm.sound]}</span>
+              <span>· ${difficultyLabels[alarm.difficulty] || 'Medium'}</span>
             </div>
           </div>
           <div class="alarm-right">
@@ -572,23 +627,42 @@
 
   document.getElementById('addAlarmBtn').addEventListener('click', ()=> openEdit(null));
 
+  function setSegmentedValue(container, value){
+    container.querySelectorAll('.segmented-option').forEach(btn=>{
+      btn.classList.toggle('selected', btn.dataset.value === value);
+    });
+  }
+  function getSegmentedValue(container){
+    const sel = container.querySelector('.segmented-option.selected');
+    return sel ? sel.dataset.value : 'medium';
+  }
+  const difficultySegmented = document.getElementById('difficultySegmented');
+  difficultySegmented.querySelectorAll('.segmented-option').forEach(btn=>{
+    btn.addEventListener('click', ()=> setSegmentedValue(difficultySegmented, btn.dataset.value));
+  });
+
   function openEdit(id){
     editingId = id;
     const editKicker = document.getElementById('editKicker');
     const timeInput = document.getElementById('editTime');
     const labelInput = document.getElementById('editLabel');
     const soundInput = document.getElementById('editSound');
+    const genreInput = document.getElementById('editMusicGenre');
     if(id){
       const a = alarms.find(a=>a.id===id);
       editKicker.textContent = 'Edit alarm';
       timeInput.value = a.time;
       labelInput.value = a.label;
       soundInput.value = a.sound;
+      setSegmentedValue(difficultySegmented, a.difficulty || 'medium');
+      genreInput.value = a.musicGenre || 'energetic';
     } else {
       editKicker.textContent = 'New alarm';
       timeInput.value = defaultTimeSoon(1);
       labelInput.value = '';
       soundInput.value = 'chimes';
+      setSegmentedValue(difficultySegmented, 'medium');
+      genreInput.value = 'energetic';
     }
     showScreen('edit');
   }
@@ -599,12 +673,14 @@
     const time = document.getElementById('editTime').value;
     const label = document.getElementById('editLabel').value.trim();
     const sound = document.getElementById('editSound').value;
+    const difficulty = getSegmentedValue(difficultySegmented);
+    const musicGenre = document.getElementById('editMusicGenre').value;
     if(!time) return;
     if(editingId){
       const a = alarms.find(a=>a.id===editingId);
-      a.time = time; a.label = label; a.sound = sound; a.triggeredKey = null;
+      a.time = time; a.label = label; a.sound = sound; a.difficulty = difficulty; a.musicGenre = musicGenre; a.triggeredKey = null;
     } else {
-      alarms.push({ id: cryptoId(), time, label, sound, enabled: true, triggeredKey: null });
+      alarms.push({ id: cryptoId(), time, label, sound, difficulty, musicGenre, enabled: true, triggeredKey: null });
     }
     saveAlarms();
     renderAlarmList();
@@ -754,9 +830,10 @@
     clearInterval(ringClockInterval);
     detachMotionListener();
     stopAlarmLoop();
+    TARGET_SECONDS = difficultySeconds[currentAlarm && currentAlarm.difficulty] || 8;
     showScreen('dance');
     resetDanceState();
-    startDanceMusic();
+    startDanceMusic((currentAlarm && currentAlarm.musicGenre) || 'energetic');
   }
 
   /* ============================================================
@@ -833,6 +910,7 @@
   const TRACKS = [
     {
       name: 'Turbo Disco',
+      genre: 'energetic',
       bpm: 140,
       bassType: 'sawtooth', leadType: 'square',
       kick:  [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
@@ -841,7 +919,18 @@
       lead:  [null,440,null,523.25, null,440,587.33,null, null,392,null,523.25, null,440,587.33,null],
     },
     {
+      name: 'Soft Sunrise',
+      genre: 'lyrical',
+      bpm: 90,
+      bassType: 'sine', leadType: 'sine',
+      kick:  [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+      hihatOpenEvery: 16,
+      bass:  [220,null,null,null, 246.94,null,null,null, 196,null,null,null, 220,null,null,null],
+      lead:  [null,null,330,null, null,null,392,null, null,null,349.23,null, null,null,293.66,null],
+    },
+    {
       name: 'Circus Bounce',
+      genre: 'playful',
       bpm: 112,
       bassType: 'triangle', leadType: 'triangle',
       kick:  [1,0,0,0, 0,0,1,0, 0,0,1,0, 0,0,0,0],
@@ -851,6 +940,7 @@
     },
     {
       name: '8-bit Sprint',
+      genre: 'retro',
       bpm: 152,
       bassType: 'square', leadType: 'square',
       kick:  [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
@@ -860,6 +950,7 @@
     },
     {
       name: 'Wacky Chase',
+      genre: 'playful',
       bpm: 132,
       bassType: 'sawtooth', leadType: 'triangle',
       kick:  [1,0,1,0, 0,0,1,0, 1,0,0,0, 0,1,0,0],
@@ -890,9 +981,10 @@
     }
     musicStep = (musicStep + 1) % 16;
   }
-  function startDanceMusic(){
+  function startDanceMusic(genre){
     ensureMusicCtx();
-    currentTrack = TRACKS[Math.floor(Math.random()*TRACKS.length)];
+    const pool = TRACKS.filter(t => t.genre === genre);
+    currentTrack = (pool.length ? pool : TRACKS)[Math.floor(Math.random()*(pool.length ? pool.length : TRACKS.length))];
     STEP_DUR = 60/currentTrack.bpm/4;
     musicMasterGain.gain.value = musicOn ? 0.45 : 0;
     musicStep = 0;
@@ -936,14 +1028,12 @@
   let recordedChunks = [];
   let cameraStream = null;
 
-  const TARGET_SECONDS = 8;
+  let TARGET_SECONDS = 8;
   const MOVE_THRESHOLD = 0.022; // fixed, not user-adjustable
   const METER_MAX = 0.09;
   const FILL_RATE = 1;
   let progress = 0;
   let alarmSolved = false;
-
-  targetSecondsEl.textContent = TARGET_SECONDS;
 
   function resetDanceState(){
     running = false;
@@ -953,6 +1043,7 @@
     recordedChunks = [];
     progressFill.style.width = '0%';
     progressSecondsEl.textContent = '0.0';
+    targetSecondsEl.textContent = TARGET_SECONDS;
     stateLabel.textContent = 'Waiting for camera…';
     stateLabel.classList.remove('active');
     stageEmpty.style.display = 'flex';
