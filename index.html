@@ -480,9 +480,28 @@
   /* ============================================================
      ALARM DATA + LIST SCREEN
      ============================================================ */
-  let alarms = [
-    { id: cryptoId(), time: defaultTimeSoon(1), label: 'Wake up', sound: 'chimes', enabled: true, triggeredKey: null }
-  ];
+  const STORAGE_KEY = 'wakeAndMove.alarms.v1';
+
+  function loadAlarms(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        if(Array.isArray(parsed)) return parsed;
+      }
+    }catch(e){ console.warn('Could not read saved alarms:', e); }
+    // first run / nothing saved yet — seed with one example alarm
+    return [
+      { id: cryptoId(), time: defaultTimeSoon(1), label: 'Wake up', sound: 'chimes', enabled: true, triggeredKey: null }
+    ];
+  }
+  function saveAlarms(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(alarms));
+    }catch(e){ console.warn('Could not save alarms:', e); }
+  }
+
+  let alarms = loadAlarms();
   let editingId = null; // null = creating new
 
   function cryptoId(){ return Math.random().toString(36).slice(2,9); }
@@ -536,11 +555,13 @@
         row.querySelector('.trash').addEventListener('click', (e)=>{
           e.stopPropagation();
           alarms = alarms.filter(a=>a.id !== alarm.id);
+          saveAlarms();
           renderAlarmList();
         });
         row.querySelector('.toggle-input').addEventListener('click', (e)=> e.stopPropagation());
         row.querySelector('.toggle-input').addEventListener('change', (e)=>{
           alarm.enabled = e.target.checked;
+          saveAlarms();
         });
         alarmListEl.appendChild(row);
       });
@@ -585,6 +606,7 @@
     } else {
       alarms.push({ id: cryptoId(), time, label, sound, enabled: true, triggeredKey: null });
     }
+    saveAlarms();
     renderAlarmList();
     showScreen('list');
   });

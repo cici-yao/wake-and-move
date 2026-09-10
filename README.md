@@ -31,7 +31,7 @@ Traditional alarms rely on willpower at the exact moment willpower is lowest. Th
 | ML inference | TensorFlow.js + MoveNet (`@tensorflow-models/pose-detection`) | Runs fully in-browser via WebGL — no video ever leaves the device |
 | Audio | Web Audio API | Alarm tones and background music are synthesized (oscillators + envelopes), avoiding any copyright/licensing concerns |
 | Media capture | `MediaRecorder` + `getUserMedia` | Native browser APIs, no extra dependencies |
-| Backend *(in progress)* | [Supabase](https://supabase.com) (Postgres + Auth) | Backend-as-a-service — gives real user accounts and a relational database without hosting/maintaining a server |
+| Backend *(planned, deferred)* | [Supabase](https://supabase.com) (Postgres + Auth) | Backend-as-a-service — gives real user accounts and a relational database without hosting/maintaining a server. Schema is designed; wiring it up was deprioritized under a tight build timeline in favor of a working local-first version. |
 | Hosting | Netlify / Vercel | Free static hosting with HTTPS (required for camera access) and auto-deploy from GitHub |
 
 ## Architecture
@@ -94,8 +94,8 @@ Static site, no build step. Connect this GitHub repo to [Netlify](https://netlif
 
 ## Roadmap
 
-- [ ] Wire up Supabase Auth + alarm sync across devices (schema already drafted)
-- [ ] Local persistence (`localStorage`) so alarms survive a page refresh even before backend sync
+- [x] Local persistence (`localStorage`) so alarms survive a page refresh
+- [ ] Supabase Auth + alarm sync across devices — schema is drafted (`supabase/schema.sql`), deliberately deferred: given a tight build timeline, shipping a working local-first version took priority over account infrastructure that isn't needed to validate the core idea
 - [ ] Wrap with [Capacitor](https://capacitorjs.com) for a native iOS/Android build — solves the core reliability gap of browser tabs being suspended in the background, so the alarm fires even if the app isn't open
 - [ ] Self-host the pose-detection model weights for full offline support
 - [ ] Basic anti-cheat: liveness check to prevent looping a pre-recorded video in front of the camera
