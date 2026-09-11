@@ -1121,7 +1121,7 @@
     const action = mode === 'riddle'
       ? `by correctly solving a brain-teaser riddle in ${elapsedSeconds} seconds`
       : `by moving in front of a camera for ${elapsedSeconds} seconds straight (difficulty: ${difficulty || 'medium'}, "${genre || 'energetic'}"-style music was playing)`;
-    const prompt = `Someone just turned off their "get out of bed" alarm ${action}, alarm labeled "${label || 'Alarm'}". Write ONE short, funny, warm congratulatory line for them. Under 15 words. No quotation marks, no hashtags, no emoji.`;
+    const prompt = `Someone just turned off their "get out of bed" alarm ${action}, alarm labeled "${label || 'Alarm'}". Write ONE short, genuinely funny congratulatory line for them — lean into absurd or deadpan humor, like a sarcastic friend hyping them up, not a wholesome motivational-poster tone. Under 15 words. No quotation marks, no hashtags, no emoji.`;
     const text = await callLLM(prompt, { maxTokens: 40, timeoutMs: 6000 });
     return text ? text.replace(/^["']|["']$/g, '') : null;
   }
@@ -1827,10 +1827,12 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
 
   const ENCOURAGEMENTS = [
     "You showed that alarm who's boss.",
-    "Look at you, up and moving already.",
-    "That's the hardest part of your day, done.",
-    "Future you says thank you.",
+    "Look at you, up and moving already. Suspicious.",
+    "That's the hardest part of your day, done. Downhill from here (allegedly).",
+    "Future you says thank you. Present you says why.",
     "Not bad for someone who was asleep 30 seconds ago.",
+    "Scientists hate this one weird trick: getting up.",
+    "Your bed is currently filing a missing person report.",
   ];
 
   function resetDanceState(){
