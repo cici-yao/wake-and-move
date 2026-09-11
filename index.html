@@ -50,13 +50,15 @@
     margin: 0 auto;
     padding: 48px 22px 80px;
     min-height: 100vh;
+    position: relative;
+    z-index: 1;
   }
   .wrap.wide{ max-width: 1000px; }
   .screen{ display:none; }
-  .screen.active{ display:block; animation: screenEnter .35s ease; }
+  .screen.active{ display:block; animation: screenEnter .45s cubic-bezier(0.34, 1.56, 0.64, 1); }
   @keyframes screenEnter{
-    from{ opacity:0; transform: translateY(10px); }
-    to{ opacity:1; transform: translateY(0); }
+    from{ opacity:0; transform: translateY(14px) scale(0.97); }
+    to{ opacity:1; transform: translateY(0) scale(1); }
   }
 
   .kicker{
@@ -157,6 +159,11 @@
     justify-content: space-between;
     gap: 14px;
     cursor: pointer;
+    animation: rowEnter .45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  @keyframes rowEnter{
+    from{ opacity:0; transform: translateY(14px) scale(0.97); }
+    to{ opacity:1; transform: translateY(0) scale(1); }
   }
   .alarm-row.disabled{ opacity: 0.42; }
   .alarm-row .info{ min-width:0; }
@@ -182,7 +189,7 @@
     left:2px; top:2px;
     background: var(--text);
     border-radius:50%;
-    transition: transform .2s ease;
+    transition: transform .32s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .switch input:checked + .slider-toggle{ background: var(--grad); border-color: transparent; }
   .switch input:checked + .slider-toggle::before{ transform: translateX(20px); background:#fff; }
@@ -199,11 +206,15 @@
     color: var(--text-dim);
     font-size: 14px;
     text-align:center;
-    padding: 60px 20px;
+    padding: 48px 20px 40px;
     border: 1px dashed var(--line);
     border-radius: 14px;
     line-height:1.6;
+    display:flex;
+    flex-direction: column;
+    align-items: center;
   }
+  .empty-state .mascot-mini{ margin-bottom: 4px; animation: rowEnter .5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
 
   .note{ font-size: 12.5px; color: var(--text-dim); line-height: 1.65; margin-top: 22px; }
   .note b{ color: var(--text); font-weight:600; }
@@ -447,6 +458,7 @@
 
   /* ---------- Home / hero screen ---------- */
   #screenHome{ position: relative; overflow: hidden; min-height: 100vh; }
+  #screenList{ position: relative; overflow: hidden; min-height: 100vh; }
   .hero-blob{
     position: absolute;
     border-radius: 50%;
@@ -466,6 +478,20 @@
     background: var(--blue);
     bottom: -140px; right: -120px;
     animation: blobFloat2 11s ease-in-out infinite;
+  }
+  .list-blob-1{
+    width: 260px; height: 260px;
+    background: var(--purple);
+    top: -100px; right: -90px;
+    opacity: 0.22;
+    animation: blobFloat1 12s ease-in-out infinite;
+  }
+  .list-blob-2{
+    width: 300px; height: 300px;
+    background: var(--pink);
+    bottom: -120px; left: -110px;
+    opacity: 0.16;
+    animation: blobFloat2 14s ease-in-out infinite;
   }
   @keyframes blobFloat1{
     0%, 100%{ transform: translate(0,0) scale(1); }
@@ -603,6 +629,8 @@
 
 <!-- ============ SCREEN: ALARM LIST ============ -->
 <div class="screen" id="screenList">
+  <div class="hero-blob list-blob-1"></div>
+  <div class="hero-blob list-blob-2"></div>
   <div class="wrap">
     <div class="top-row">
       <div>
@@ -636,6 +664,7 @@
         <select id="aiProvider">
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI</option>
+          <option value="deepseek">DeepSeek</option>
         </select>
       </div>
       <div class="field">
@@ -657,6 +686,10 @@
 
     <div class="note" style="margin-top:22px;">
       <b>How this works, and why it's built this way:</b> your key is saved in this browser's <code>localStorage</code> and is sent directly from your device to the provider's API — it never touches any server of ours and is never written into this project's code or repository. That also means it's visible to anyone who opens this browser's dev tools, which is fine for trying this out yourself but is <b>not how you'd ship this to other people</b> — a real product would route this call through a backend (a Supabase Edge Function, for instance) so the key never lives in the browser at all. Leave this blank and the app falls back to a small set of built-in encouraging lines — nothing breaks either way.
+    </div>
+
+    <div class="note" style="margin-top:14px;">
+      <b>Using DeepSeek:</b> its API is OpenAI-compatible, but whether it accepts calls made directly from a browser (rather than a server) hasn't been verified here — if it fails, check your browser console for a CORS error. Model names also change fairly often across all providers; if the default in the Model field above stops working, check that provider's current docs for the right name.
     </div>
   </div>
 </div>
@@ -1007,16 +1040,36 @@
     if(alarms.length === 0){
       const empty = document.createElement('div');
       empty.className = 'empty-state';
-      empty.textContent = 'No alarms yet. Tap + to add one.';
+      empty.innerHTML = `
+        <svg viewBox="0 0 100 100" class="mascot-mini" aria-hidden="true">
+          <defs>
+            <linearGradient id="emptyStateGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ff6fae"/>
+              <stop offset="55%" stop-color="#a78bfa"/>
+              <stop offset="100%" stop-color="#5b8cff"/>
+            </linearGradient>
+          </defs>
+          <g class="hero-figure">
+            <circle cx="50" cy="26" r="14" fill="#f4f2fb"/>
+            <path d="M50 40 L50 68" stroke="url(#emptyStateGrad)" stroke-width="7" stroke-linecap="round"/>
+            <path d="M50 46 L28 34" stroke="url(#emptyStateGrad)" stroke-width="6" stroke-linecap="round" class="hero-arm-l"/>
+            <path d="M50 46 L72 32" stroke="url(#emptyStateGrad)" stroke-width="6" stroke-linecap="round" class="hero-arm-r"/>
+            <path d="M50 68 L34 90" stroke="url(#emptyStateGrad)" stroke-width="6" stroke-linecap="round"/>
+            <path d="M50 68 L66 90" stroke="url(#emptyStateGrad)" stroke-width="6" stroke-linecap="round"/>
+          </g>
+        </svg>
+        <div>No alarms yet. Tap + to add one.</div>
+      `;
       alarmListEl.appendChild(empty);
       return;
     }
     alarms
       .slice()
       .sort((a,b)=> a.time.localeCompare(b.time))
-      .forEach(alarm=>{
+      .forEach((alarm, i)=>{
         const row = document.createElement('div');
         row.className = 'alarm-row' + (alarm.enabled ? '' : ' disabled');
+        row.style.animationDelay = (i * 60) + 'ms';
         row.innerHTML = `
           <div class="info">
             <div class="alarm-time">${formatTime12(alarm.time)}</div>
@@ -1061,7 +1114,7 @@
      AI COACH SETTINGS
      ============================================================ */
   const AI_SETTINGS_KEY = 'wakeAndMove.aiSettings.v1';
-  const DEFAULT_MODELS = { anthropic: 'claude-haiku-4-5-20251001', openai: 'gpt-4o-mini' };
+  const DEFAULT_MODELS = { anthropic: 'claude-haiku-4-5-20251001', openai: 'gpt-4o-mini', deepseek: 'deepseek-chat' };
 
   function loadAiSettings(){
     try{
@@ -1142,6 +1195,25 @@
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${settings.apiKey}` },
           body: JSON.stringify({
             model: settings.model || DEFAULT_MODELS.openai,
+            max_tokens: maxTokens,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+          signal: controller.signal,
+        });
+        if(!res.ok) return null;
+        const data = await res.json();
+        text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      } else if(settings.provider === 'deepseek'){
+        // DeepSeek's API is OpenAI-compatible in request/response shape.
+        // Whether it accepts direct browser calls (CORS) isn't something
+        // we could verify ahead of time — if this throws/blocks in the
+        // browser console, that's DeepSeek not allowing direct browser
+        // access yet, not a bug in this code.
+        const res = await fetch('https://api.deepseek.com/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${settings.apiKey}` },
+          body: JSON.stringify({
+            model: settings.model || DEFAULT_MODELS.deepseek,
             max_tokens: maxTokens,
             messages: [{ role: 'user', content: prompt }],
           }),
