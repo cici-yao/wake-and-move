@@ -851,8 +851,11 @@
           <div class="sticker-palette">
             <button class="sticker-choice" data-emoji="🕶️" data-face="glasses">🕶️</button>
             <button class="sticker-choice" data-emoji="🥸" data-face="disguise">🥸</button>
+            <button class="sticker-choice" data-emoji="👑" data-face="crown">👑</button>
+            <button class="sticker-choice" data-emoji="😇" data-face="halo">😇</button>
+            <button class="sticker-choice" data-emoji="🎩" data-face="tophat">🎩</button>
           </div>
-          <div class="note" style="margin-top:10px;">These follow your eyes/nose automatically, using the same pose model from recording — an approximation (2 eye points + a nose point), not pixel-perfect face tracking, so expect some wobble.</div>
+          <div class="note" style="margin-top:10px;">These follow your eyes/nose automatically, using the same pose model from recording — an approximation (2 eye points + a nose point, head-top is estimated from those), not pixel-perfect face tracking, so expect some wobble.</div>
         </div>
 
         <div class="card">
@@ -860,12 +863,22 @@
           <div class="sticker-palette" id="stickerPalette">
             <button class="sticker-choice" data-emoji="😎">😎</button>
             <button class="sticker-choice" data-emoji="🥳">🥳</button>
-            <button class="sticker-choice" data-emoji="👑">👑</button>
             <button class="sticker-choice" data-emoji="⭐">⭐</button>
             <button class="sticker-choice" data-emoji="🔥">🔥</button>
             <button class="sticker-choice" data-emoji="💪">💪</button>
             <button class="sticker-choice" data-emoji="😴">😴</button>
             <button class="sticker-choice" data-emoji="🎉">🎉</button>
+            <button class="sticker-choice" data-emoji="🌈">🌈</button>
+            <button class="sticker-choice" data-emoji="🚀">🚀</button>
+            <button class="sticker-choice" data-emoji="💯">💯</button>
+            <button class="sticker-choice" data-emoji="🦄">🦄</button>
+            <button class="sticker-choice" data-emoji="🎸">🎸</button>
+            <button class="sticker-choice" data-emoji="🍕">🍕</button>
+            <button class="sticker-choice" data-emoji="👻">👻</button>
+            <button class="sticker-choice" data-emoji="⚡">⚡</button>
+            <button class="sticker-choice" data-emoji="🕺">🕺</button>
+            <button class="sticker-choice" data-emoji="💃">💃</button>
+            <button class="sticker-choice" data-emoji="🤩">🤩</button>
           </div>
           <div class="note" style="margin-top:12px;">Tap a sticker to add it, then drag it anywhere.</div>
         </div>
@@ -2248,9 +2261,16 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     const eyeDist = Math.hypot(rightEye.x-leftEye.x, rightEye.y-leftEye.y);
     const midX = (leftEye.x+rightEye.x)/2, midY = (leftEye.y+rightEye.y)/2;
     const noseX = nose ? nose.x : midX, noseY = nose ? nose.y : midY + eyeDist*0.6;
+    // MoveNet has no head-outline point, so head-top is a rough estimate:
+    // eyes sit roughly a third of the way down the face, so we extend
+    // upward from the eye line by a couple of eye-widths.
+    const headTopY = Math.max(0, midY - eyeDist*2.0);
     return {
       glasses:  { xPct: 1 - (midX/vw),  yPct: midY/vh,  sizePct: Math.min(0.6, (eyeDist/vw) * 2.6) },
       disguise: { xPct: 1 - (noseX/vw), yPct: noseY/vh, sizePct: Math.min(0.6, (eyeDist/vw) * 2.8) },
+      crown:    { xPct: 1 - (midX/vw),  yPct: headTopY/vh,               sizePct: Math.min(0.6, (eyeDist/vw) * 2.4) },
+      halo:     { xPct: 1 - (midX/vw),  yPct: Math.max(0, headTopY - eyeDist*0.6)/vh, sizePct: Math.min(0.6, (eyeDist/vw) * 2.2) },
+      tophat:   { xPct: 1 - (midX/vw),  yPct: Math.max(0, headTopY - eyeDist*0.2)/vh, sizePct: Math.min(0.6, (eyeDist/vw) * 2.6) },
     };
   }
 
