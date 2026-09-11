@@ -643,11 +643,6 @@
       </div>
     </div>
     <div class="alarm-list" id="alarmList"></div>
-    <div class="note">
-      <b>Known limitation:</b> browser tabs get suspended in the background or when the phone is locked,
-      so alarms may not fire reliably while asleep. A production version would need a native wrapper
-      (e.g. Capacitor) so the OS itself triggers the alarm. Use the alarm's <b>Test</b> button to try the full flow now.
-    </div>
   </div>
 </div>
 
@@ -686,10 +681,6 @@
 
     <div class="note" style="margin-top:22px;">
       <b>How this works, and why it's built this way:</b> your key is saved in this browser's <code>localStorage</code> and is sent directly from your device to the provider's API — it never touches any server of ours and is never written into this project's code or repository. That also means it's visible to anyone who opens this browser's dev tools, which is fine for trying this out yourself but is <b>not how you'd ship this to other people</b> — a real product would route this call through a backend (a Supabase Edge Function, for instance) so the key never lives in the browser at all. Leave this blank and the app falls back to a small set of built-in encouraging lines — nothing breaks either way.
-    </div>
-
-    <div class="note" style="margin-top:14px;">
-      <b>Using DeepSeek:</b> its API is OpenAI-compatible, but whether it accepts calls made directly from a browser (rather than a server) hasn't been verified here — if it fails, check your browser console for a CORS error. Model names also change fairly often across all providers; if the default in the Model field above stops working, check that provider's current docs for the right name.
     </div>
   </div>
 </div>
