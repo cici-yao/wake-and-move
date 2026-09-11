@@ -359,6 +359,16 @@
     cursor: pointer;
   }
   .close-x:hover{ color: var(--text); border-color: var(--purple); }
+  .encourage-line{
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-top: 18px;
+    background: var(--grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 </style>
 </head>
 <body>
@@ -489,6 +499,20 @@
   </div>
 </div>
 
+<!-- ============ SCREEN: CHALLENGE COMPLETE ============ -->
+<div class="screen" id="screenSuccess">
+  <div class="wrap">
+    <div class="success-badge">✓ Alarm dismissed</div>
+    <h1>Congratulations!</h1>
+    <div class="sub" id="completeSub" style="font-size:17px; color:var(--text);">You woke up in <span id="completeSeconds">0</span> seconds.</div>
+    <div class="encourage-line" id="encourageLine"></div>
+    <div class="row" style="margin-top:28px;">
+      <button class="btn" id="viewRecordingBtn" disabled>Preparing video…</button>
+      <button class="btn ghost" id="successHomeBtn">🏠 Home</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ SCREEN: VIDEO PREVIEW ============ -->
 <div class="screen" id="screenPreview">
   <div class="wrap" style="position:relative;">
@@ -521,6 +545,7 @@
     edit: document.getElementById('screenEdit'),
     ringing: document.getElementById('screenRinging'),
     dance: document.getElementById('screenDance'),
+    success: document.getElementById('screenSuccess'),
     preview: document.getElementById('screenPreview'),
   };
   function showScreen(name){
@@ -1034,12 +1059,22 @@
   const FILL_RATE = 1;
   let progress = 0;
   let alarmSolved = false;
+  let challengeStartTime = null;
+
+  const ENCOURAGEMENTS = [
+    "You showed that alarm who's boss.",
+    "Look at you, up and moving already.",
+    "That's the hardest part of your day, done.",
+    "Future you says thank you.",
+    "Not bad for someone who was asleep 30 seconds ago.",
+  ];
 
   function resetDanceState(){
     running = false;
     prevKeypoints = null;
     progress = 0;
     alarmSolved = false;
+    challengeStartTime = null;
     recordedChunks = [];
     progressFill.style.width = '0%';
     progressSecondsEl.textContent = '0.0';
@@ -1049,6 +1084,10 @@
     stageEmpty.style.display = 'flex';
     recBadge.style.display = 'none';
     ctx.clearRect(0,0,canvas.width,canvas.height);
+    const viewBtn = document.getElementById('viewRecordingBtn');
+    viewBtn.style.display = '';
+    viewBtn.disabled = true;
+    viewBtn.textContent = 'Preparing video…';
   }
 
   startCamBtn.addEventListener('click', async ()=>{
@@ -1065,6 +1104,7 @@
       startRecording(stream);
       running = true;
       lastFrameTime = performance.now();
+      challengeStartTime = performance.now();
       stateLabel.textContent = 'Tracking — get your whole body in frame and start moving';
       loop();
     }catch(err){
@@ -1088,26 +1128,51 @@
     recBadge.style.display = 'flex';
   }
 
-  function stopRecordingAndShowPreview(){
+  function finishChallenge(elapsedSeconds){
     stopDanceMusic();
-    if(!mediaRecorder) { goToPreviewFallback(); return; }
+
+    // Show the celebration screen immediately — don't make the person
+    // wait on video encoding before they get any feedback.
+    document.getElementById('completeSeconds').textContent = elapsedSeconds;
+    document.getElementById('encourageLine').textContent =
+      ENCOURAGEMENTS[Math.floor(Math.random()*ENCOURAGEMENTS.length)];
+    const viewBtn = document.getElementById('viewRecordingBtn');
+    viewBtn.disabled = true;
+    viewBtn.textContent = 'Preparing video…';
+    showScreen('success');
+
+    // Recording finishes in the background; the "View recording" button
+    // lights up once it's ready. If there's no recorder at all, hide that
+    // option entirely rather than leaving a dead button.
+    if(!mediaRecorder){
+      viewBtn.style.display = 'none';
+      stopCamera();
+      return;
+    }
     mediaRecorder.onstop = ()=>{
       const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
       const url = URL.createObjectURL(blob);
-      const previewVideo = document.getElementById('previewVideo');
-      previewVideo.src = url;
+      document.getElementById('previewVideo').src = url;
       window.__lastRecordingUrl = url;
       window.__lastRecordingBlob = blob;
       stopCamera();
-      showScreen('preview');
+      viewBtn.disabled = false;
+      viewBtn.textContent = '🎥 View recording';
     };
-    try{ mediaRecorder.stop(); }catch(e){ goToPreviewFallback(); }
+    try{ mediaRecorder.stop(); }catch(e){ viewBtn.style.display = 'none'; stopCamera(); }
     recBadge.style.display = 'none';
   }
-  function goToPreviewFallback(){
-    stopCamera();
-    showScreen('preview');
+
+  document.getElementById('viewRecordingBtn').addEventListener('click', ()=> showScreen('preview'));
+
+  function goHome(){
+    if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
+    window.__lastRecordingUrl = null;
+    window.__lastRecordingBlob = null;
+    showScreen('list');
   }
+  document.getElementById('successHomeBtn').addEventListener('click', goHome);
+
   function stopCamera(){
     running = false;
     if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
@@ -1215,7 +1280,8 @@
           alarmSolved = true;
           stateLabel.textContent = 'Challenge complete 🎉';
           stateLabel.classList.remove('active');
-          setTimeout(stopRecordingAndShowPreview, 500);
+          const elapsed = challengeStartTime ? Math.round((performance.now() - challengeStartTime)/1000) : Math.round(TARGET_SECONDS);
+          setTimeout(()=> finishChallenge(elapsed), 400);
           return;
         }
       }
@@ -1241,21 +1307,15 @@
     a.click();
     a.remove();
   });
-  function exitPreview(){
-    if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
-    window.__lastRecordingUrl = null;
-    window.__lastRecordingBlob = null;
-    showScreen('list');
-  }
-  document.getElementById('exitPreviewBtn').addEventListener('click', exitPreview);
-  document.getElementById('closePreviewBtn').addEventListener('click', exitPreview);
+  document.getElementById('exitPreviewBtn').addEventListener('click', goHome);
+  document.getElementById('closePreviewBtn').addEventListener('click', goHome);
   document.getElementById('retakeBtn').addEventListener('click', ()=>{
     if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
     window.__lastRecordingUrl = null;
     window.__lastRecordingBlob = null;
     showScreen('dance');
     resetDanceState();
-    startDanceMusic();
+    startDanceMusic((currentAlarm && currentAlarm.musicGenre) || 'energetic');
   });
 
 })();
