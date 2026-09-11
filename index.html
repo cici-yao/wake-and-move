@@ -339,6 +339,28 @@
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     flex-direction:column; gap:16px; color:var(--text-dim); text-align:center; padding:26px; font-size:13.5px; line-height:1.6;
   }
+  .bullet-layer{
+    position:absolute; inset:0;
+    overflow:hidden;
+    pointer-events:none;
+  }
+  .bullet{
+    position:absolute;
+    left: 100%;
+    white-space:nowrap;
+    font-weight:700;
+    font-size: 14px;
+    color:#fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+    padding: 5px 12px;
+    background: rgba(0,0,0,0.4);
+    border-radius: 999px;
+    animation: bulletScroll linear forwards;
+  }
+  @keyframes bulletScroll{
+    from{ transform: translateX(0); }
+    to{ transform: translateX(var(--bullet-travel, -600px)); }
+  }
   .rec-badge{
     position:absolute; top:14px; left:14px;
     display:flex; align-items:center; gap:7px;
@@ -796,6 +818,7 @@
       <div class="stage" id="stage">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
+        <div class="bullet-layer" id="bulletLayer"></div>
         <div class="rec-badge" id="recBadge" style="display:none;"><div class="dot"></div>REC</div>
         <div class="stage-empty" id="stageEmpty">
           <div>Camera access is needed to see you move.<br>Everything is processed locally — nothing is uploaded.</div>
@@ -1316,6 +1339,19 @@
     }catch(e){ return null; }
   }
 
+  async function tryGenerateBulletBatch({ difficulty, genre, label }){
+    const prompt = `Give me 8 short, funny, slightly sarcastic one-liners to flash across the screen like scrolling live comments while someone dances/moves around to turn off their morning alarm (labeled "${label || 'Alarm'}", difficulty ${difficulty || 'medium'}, "${genre || 'energetic'}" music playing). Playful hype, not wholesome. Each line under 8 words. Reply with ONLY a JSON array of strings, no markdown fences, no commentary.`;
+    const raw = await callLLM(prompt, { maxTokens: 300, timeoutMs: 7000 });
+    if(!raw) return null;
+    try{
+      const cleaned = raw.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if(!Array.isArray(parsed)) return null;
+      const lines = parsed.filter(x=>typeof x === 'string' && x.trim()).map(x=>x.trim().slice(0,60));
+      return lines.length ? lines : null;
+    }catch(e){ return null; }
+  }
+
   async function tryGenerateAITrack(genre){
     const prompt = `You are composing a short 16-step looped instrumental pattern for an alarm-clock app's "get up and dance" screen. Mood: "${genre}" (energetic=upbeat electronic, lyrical=soft and mellow, playful=bouncy and goofy, retro=8-bit chiptune).
 
@@ -1548,6 +1584,12 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     const genre = (currentAlarm && currentAlarm.musicGenre) || 'energetic';
     startDanceMusic(genre);
     attemptAiTrackSwap(genre);
+    startBulletStream();
+    attemptAiBulletSwap({
+      difficulty: currentAlarm && currentAlarm.difficulty,
+      genre,
+      label: currentAlarm && currentAlarm.label,
+    });
   }
 
   /* ============================================================
@@ -1898,6 +1940,68 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     "Your bed is currently filing a missing person report.",
   ];
 
+  /* ============================================================
+     BULLET COMMENTS — scrolling hype text over the dance challenge
+     ============================================================ */
+  const BULLET_FALLBACKS = [
+    "Nobody's watching. Except your ceiling fan.",
+    "This is the cardio you didn't ask for.",
+    "The neighbors definitely heard that.",
+    "Keep going, the bed isn't going anywhere.",
+    "This is your villain origin story.",
+    "10/10 form, 0/10 grace.",
+    "You call that dancing?? Love it.",
+    "Alarm: 0. You: eventually 1.",
+    "Somewhere, a fitness influencer is crying.",
+    "Bold choice of pajamas for a workout.",
+  ];
+  let bulletPool = BULLET_FALLBACKS.slice();
+  let bulletIndex = 0;
+  let bulletInterval = null;
+
+  function spawnBullet(){
+    const layer = document.getElementById('bulletLayer');
+    const stageEl = document.getElementById('stage');
+    if(!layer || !stageEl || !bulletPool.length) return;
+    const el = document.createElement('div');
+    el.className = 'bullet';
+    el.textContent = bulletPool[bulletIndex % bulletPool.length];
+    bulletIndex++;
+    el.style.top = (12 + Math.random()*68) + '%';
+    const duration = 6 + Math.random()*2.5;
+    el.style.animationDuration = duration + 's';
+    layer.appendChild(el);
+    const travel = -(stageEl.clientWidth + el.offsetWidth + 40);
+    el.style.setProperty('--bullet-travel', travel + 'px');
+    el.addEventListener('animationend', ()=> el.remove());
+  }
+
+  function startBulletStream(){
+    stopBulletStream();
+    bulletPool = BULLET_FALLBACKS.slice().sort(()=> Math.random()-0.5);
+    bulletIndex = 0;
+    spawnBullet();
+    bulletInterval = setInterval(spawnBullet, 1700);
+  }
+  function stopBulletStream(){
+    if(bulletInterval) clearInterval(bulletInterval);
+    bulletInterval = null;
+    const layer = document.getElementById('bulletLayer');
+    if(layer) layer.innerHTML = '';
+  }
+
+  // Fetched once per dance attempt, in the background — if it arrives
+  // before the challenge ends, swaps the AI-written lines in for the rest
+  // of the run. If it's slow, wrong shape, or there's no key, the
+  // built-in fallback lines above just keep playing — nobody notices.
+  async function attemptAiBulletSwap(ctx){
+    const batch = await tryGenerateBulletBatch(ctx);
+    if(!batch) return;
+    if(!screens.dance.classList.contains('active') || alarmSolved) return;
+    bulletPool = batch;
+    bulletIndex = 0;
+  }
+
   function resetDanceState(){
     running = false;
     prevKeypoints = null;
@@ -1913,6 +2017,7 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     stageEmpty.style.display = 'flex';
     recBadge.style.display = 'none';
     ctx.clearRect(0,0,canvas.width,canvas.height);
+    stopBulletStream();
     const viewBtn = document.getElementById('viewRecordingBtn');
     viewBtn.style.display = '';
     viewBtn.disabled = true;
@@ -2143,6 +2248,7 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
           alarmSolved = true;
           stateLabel.textContent = 'Challenge complete 🎉';
           stateLabel.classList.remove('active');
+          stopBulletStream();
           const elapsed = challengeStartTime ? Math.round((performance.now() - challengeStartTime)/1000) : Math.round(TARGET_SECONDS);
           setTimeout(()=> finishChallenge(elapsed), 400);
           return;
