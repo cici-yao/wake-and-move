@@ -369,10 +369,15 @@
     filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));
   }
   .sticker:active{ cursor: grabbing; }
+  .sticker.face-anchored{ cursor: pointer; }
+  .sticker.face-anchored:active{ cursor: pointer; }
   .sticker.selected{
     outline: 2px dashed var(--pink);
     outline-offset: 6px;
     border-radius: 50%;
+  }
+  .sticker.face-anchored.selected{
+    outline-color: var(--blue);
   }
   .sticker-palette{
     display:grid;
@@ -842,7 +847,16 @@
 
       <div>
         <div class="card">
-          <div class="card-label">Add a sticker</div>
+          <div class="card-label">Face-tracking stickers</div>
+          <div class="sticker-palette">
+            <button class="sticker-choice" data-emoji="🕶️" data-face="glasses">🕶️</button>
+            <button class="sticker-choice" data-emoji="🥸" data-face="disguise">🥸</button>
+          </div>
+          <div class="note" style="margin-top:10px;">These follow your eyes/nose automatically, using the same pose model from recording — an approximation (2 eye points + a nose point), not pixel-perfect face tracking, so expect some wobble.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Manual stickers</div>
           <div class="sticker-palette" id="stickerPalette">
             <button class="sticker-choice" data-emoji="😎">😎</button>
             <button class="sticker-choice" data-emoji="🥳">🥳</button>
@@ -853,7 +867,7 @@
             <button class="sticker-choice" data-emoji="😴">😴</button>
             <button class="sticker-choice" data-emoji="🎉">🎉</button>
           </div>
-          <div class="note" style="margin-top:12px;">Tap a sticker to add it, drag it onto your face (or anywhere), tap it again to select it and use the controls below.</div>
+          <div class="note" style="margin-top:12px;">Tap a sticker to add it, then drag it anywhere.</div>
         </div>
 
         <div class="card">
@@ -1936,13 +1950,6 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     recBadge.style.display = 'none';
   }
 
-  document.getElementById('viewRecordingBtn').addEventListener('click', ()=>{
-    showScreen('preview');
-    const previewVideoEl = document.getElementById('previewVideo');
-    previewVideoEl.currentTime = 0;
-    previewVideoEl.play().catch(()=>{ /* autoplay blocked — not critical, user can still add stickers */ });
-  });
-
   function goHome(){
     if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
     window.__lastRecordingUrl = null;
@@ -2078,6 +2085,7 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
   let stickers = [];
   let stickerIdCounter = 0;
   let selectedStickerId = null;
+  let previewTrackingActive = false;
 
   function resetStickers(){
     stickers = [];
@@ -2085,40 +2093,81 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     renderStickers();
   }
 
+  // Reads eye/nose keypoints off a MoveNet pose. Coordinates are in the
+  // RAW (unmirrored) video's pixel space — callers are responsible for
+  // mirroring, since the two places this is used (live DOM stickers vs.
+  // the export canvas) mirror in different ways.
+  function extractFacePoints(pose){
+    const find = name => pose.keypoints.find(k => k.name === name && k.score > 0.3);
+    return { leftEye: find('left_eye'), rightEye: find('right_eye'), nose: find('nose') };
+  }
+
+  // Non-destructive: reuses existing DOM nodes by sticker id instead of
+  // wiping and rebuilding the layer every time. This matters — an earlier
+  // version rebuilt on every selection change, which destroyed the exact
+  // element a drag gesture had just started on, breaking dragging entirely.
   function renderStickers(){
     const layer = document.getElementById('stickerLayer');
-    const hintEl = document.getElementById('stickerHint');
-    layer.innerHTML = '';
+    const stageEl = document.getElementById('stickerStage');
+    const liveIds = new Set(stickers.map(s => String(s.id)));
+    Array.from(layer.children).forEach(el=>{
+      if(!liveIds.has(el.dataset.id)) layer.removeChild(el);
+    });
     stickers.forEach(s=>{
-      const el = document.createElement('div');
-      el.className = 'sticker' + (s.id === selectedStickerId ? ' selected' : '');
-      el.textContent = s.emoji;
+      let el = layer.querySelector(`[data-id="${s.id}"]`);
+      if(!el){
+        el = document.createElement('div');
+        el.dataset.id = String(s.id);
+        el.textContent = s.emoji;
+        el.addEventListener('pointerdown', (ev)=> startDragSticker(ev, s));
+        layer.appendChild(el);
+      }
+      el.className = 'sticker' + (s.id === selectedStickerId ? ' selected' : '') + (s.faceAnchor ? ' face-anchored' : '');
       el.style.left = (s.xPct*100) + '%';
       el.style.top = (s.yPct*100) + '%';
-      const stageEl = document.getElementById('stickerStage');
-      el.style.fontSize = (s.sizePct * stageEl.clientWidth) + 'px';
-      el.addEventListener('pointerdown', (e)=> startDragSticker(e, s));
-      layer.appendChild(el);
+      el.style.fontSize = (s.sizePct * (s.scale||1) * stageEl.clientWidth) + 'px';
     });
+    updateStickerHint();
+  }
+
+  // Cheap position-only update used by the per-frame face-tracking loop —
+  // skips touching classes/hint text so it's safe to call ~30 times/sec.
+  function positionStickerElements(){
+    const layer = document.getElementById('stickerLayer');
+    const stageEl = document.getElementById('stickerStage');
+    stickers.forEach(s=>{
+      const el = layer.querySelector(`[data-id="${s.id}"]`);
+      if(!el) return;
+      el.style.left = (s.xPct*100) + '%';
+      el.style.top = (s.yPct*100) + '%';
+      el.style.fontSize = (s.sizePct * (s.scale||1) * stageEl.clientWidth) + 'px';
+    });
+  }
+
+  function updateStickerHint(){
+    const hintEl = document.getElementById('stickerHint');
     hintEl.textContent = selectedStickerId
-      ? 'Sticker selected — drag it, resize it, or remove it.'
-      : (stickers.length ? 'Tap a sticker on the video to select it.' : 'No sticker selected yet.');
+      ? 'Sticker selected — use the controls below.'
+      : (stickers.length ? 'Tap a sticker to select it.' : 'No sticker selected yet.');
   }
 
   function startDragSticker(e, stickerObj){
     e.preventDefault();
     selectedStickerId = stickerObj.id;
-    renderStickers();
+    document.querySelectorAll('#stickerLayer .sticker').forEach(el=>{
+      el.classList.toggle('selected', el.dataset.id === String(stickerObj.id));
+    });
+    updateStickerHint();
+    if(stickerObj.faceAnchor) return; // position is automatic — nothing to drag
+
     const stageEl = document.getElementById('stickerStage');
     const target = e.currentTarget;
     target.setPointerCapture(e.pointerId);
-    let moved = false;
 
     function onMove(ev){
-      moved = true;
       const rect = stageEl.getBoundingClientRect();
-      let x = (ev.clientX - rect.left) / rect.width;
-      let y = (ev.clientY - rect.top) / rect.height;
+      const x = (ev.clientX - rect.left) / rect.width;
+      const y = (ev.clientY - rect.top) / rect.height;
       stickerObj.xPct = Math.min(1, Math.max(0, x));
       stickerObj.yPct = Math.min(1, Math.max(0, y));
       target.style.left = (stickerObj.xPct*100) + '%';
@@ -2134,7 +2183,15 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
 
   document.querySelectorAll('.sticker-choice').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      const s = { id: ++stickerIdCounter, emoji: btn.dataset.emoji, xPct: 0.5, yPct: 0.35, sizePct: 0.18 };
+      const faceAnchor = btn.dataset.face || null;
+      const s = {
+        id: ++stickerIdCounter,
+        emoji: btn.dataset.emoji,
+        xPct: 0.5, yPct: 0.35,
+        sizePct: faceAnchor ? 0.3 : 0.18,
+        scale: 1,
+        faceAnchor,
+      };
       stickers.push(s);
       selectedStickerId = s.id;
       renderStickers();
@@ -2147,13 +2204,15 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
   document.getElementById('stickerBiggerBtn').addEventListener('click', ()=>{
     const s = getSelectedSticker();
     if(!s) return;
-    s.sizePct = Math.min(0.5, s.sizePct + 0.02);
+    if(s.faceAnchor) s.scale = Math.min(2.5, (s.scale||1) + 0.1);
+    else s.sizePct = Math.min(0.5, s.sizePct + 0.02);
     renderStickers();
   });
   document.getElementById('stickerSmallerBtn').addEventListener('click', ()=>{
     const s = getSelectedSticker();
     if(!s) return;
-    s.sizePct = Math.max(0.05, s.sizePct - 0.02);
+    if(s.faceAnchor) s.scale = Math.max(0.3, (s.scale||1) - 0.1);
+    else s.sizePct = Math.max(0.05, s.sizePct - 0.02);
     renderStickers();
   });
   document.getElementById('stickerRemoveBtn').addEventListener('click', ()=>{
@@ -2163,17 +2222,76 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     renderStickers();
   });
 
+  // Live tracking loop while editing: only runs pose estimation when a
+  // face-anchored sticker actually exists, so idle time on this screen
+  // costs nothing extra.
+  async function trackFaceForPreview(){
+    if(!previewTrackingActive) return;
+    const video = document.getElementById('previewVideo');
+    if(!video.paused && !video.ended && detector && stickers.some(s=>s.faceAnchor)){
+      try{
+        const poses = await detector.estimatePoses(video, { flipHorizontal:false });
+        if(poses.length > 0) applyFaceAnchorPositions(poses[0], video.videoWidth||640, video.videoHeight||480);
+      }catch(e){ /* transient — just try again next frame */ }
+    }
+    requestAnimationFrame(trackFaceForPreview);
+  }
+
+  // Shared by both the live DOM-sticker preview and the export canvas:
+  // given a pose, compute where each type of face-anchored sticker should
+  // sit. Coordinates come back already mirrored (xPct in "what the person
+  // sees" space), since MoveNet keypoints are read from the raw,
+  // unmirrored decoded video frame.
+  function computeFaceAnchorLayout(pose, vw, vh){
+    const { leftEye, rightEye, nose } = extractFacePoints(pose);
+    if(!leftEye || !rightEye) return null;
+    const eyeDist = Math.hypot(rightEye.x-leftEye.x, rightEye.y-leftEye.y);
+    const midX = (leftEye.x+rightEye.x)/2, midY = (leftEye.y+rightEye.y)/2;
+    const noseX = nose ? nose.x : midX, noseY = nose ? nose.y : midY + eyeDist*0.6;
+    return {
+      glasses:  { xPct: 1 - (midX/vw),  yPct: midY/vh,  sizePct: Math.min(0.6, (eyeDist/vw) * 2.6) },
+      disguise: { xPct: 1 - (noseX/vw), yPct: noseY/vh, sizePct: Math.min(0.6, (eyeDist/vw) * 2.8) },
+    };
+  }
+
+  function applyFaceAnchorPositions(pose, vw, vh){
+    const layout = computeFaceAnchorLayout(pose, vw, vh);
+    if(!layout) return; // no face this frame — leave stickers at their last known spot
+    let changed = false;
+    stickers.forEach(s=>{
+      const spot = layout[s.faceAnchor];
+      if(!spot) return;
+      s.xPct = spot.xPct; s.yPct = spot.yPct; s.sizePct = spot.sizePct;
+      changed = true;
+    });
+    if(changed) positionStickerElements();
+  }
+
+  document.getElementById('viewRecordingBtn').addEventListener('click', ()=>{
+    showScreen('preview');
+    const previewVideoEl = document.getElementById('previewVideo');
+    previewVideoEl.currentTime = 0;
+    previewVideoEl.play().catch(()=>{ /* autoplay blocked — not critical, user can still add stickers */ });
+    previewTrackingActive = true;
+    trackFaceForPreview();
+  });
+
   // Renders the video + stickers together onto a canvas in real time and
   // records THAT canvas — the only reliable way to "bake" an overlay into
   // a downloadable video file in a browser without a server-side encoder.
   // Mirrors the frame to match what's shown on screen (the live <video>
   // is CSS-mirrored for a natural selfie view, but the underlying decoded
   // frames are not — so without this the download would look flipped
-  // compared to the preview).
+  // compared to the preview). Face-anchored stickers get re-tracked frame
+  // by frame during export too, rather than reusing whatever position
+  // they happened to be at when Download was clicked.
   async function exportVideoWithStickers(){
     const video = document.getElementById('previewVideo');
     const downloadBtn = document.getElementById('downloadVideoBtn');
     if(!video.src){ return; }
+
+    const wasTracking = previewTrackingActive;
+    previewTrackingActive = false; // pause the live loop so it isn't racing the export's own pose calls
 
     downloadBtn.disabled = true;
     downloadBtn.textContent = 'Rendering…';
@@ -2194,13 +2312,28 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     const chunks = [];
     exportRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size > 0) chunks.push(e.data); };
 
-    function drawFrame(){
+    async function drawFrame(){
       ctx.save();
       ctx.scale(-1, 1);
       ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
       ctx.restore();
+
+      let faceLayout = null;
+      if(stickers.some(s=>s.faceAnchor) && detector){
+        try{
+          const poses = await detector.estimatePoses(video, { flipHorizontal:false });
+          if(poses.length > 0) faceLayout = computeFaceAnchorLayout(poses[0], canvas.width, canvas.height);
+        }catch(e){ /* no face this frame — fall back to each sticker's last known spot */ }
+      }
+      if(faceLayout){
+        stickers.forEach(s=>{
+          const spot = faceLayout[s.faceAnchor];
+          if(spot){ s.xPct = spot.xPct; s.yPct = spot.yPct; s.sizePct = spot.sizePct; }
+        });
+      }
+
       stickers.forEach(s=>{
-        const fontSize = s.sizePct * canvas.width;
+        const fontSize = s.sizePct * (s.scale||1) * canvas.width;
         ctx.font = `${fontSize}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -2231,15 +2364,18 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
 
         downloadBtn.disabled = false;
         downloadBtn.textContent = '⬇ Download video';
+
+        previewTrackingActive = wasTracking;
+        if(wasTracking) trackFaceForPreview();
         resolve();
       };
       video.onended = ()=>{
         cancelAnimationFrame(rafId);
         try{ exportRecorder.stop(); }catch(e){ /* already stopped */ }
       };
-      function loop(){
+      async function loop(){
         if(video.paused || video.ended) return;
-        drawFrame();
+        await drawFrame();
         rafId = requestAnimationFrame(loop);
       }
       video.currentTime = 0;
@@ -2249,15 +2385,18 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
         try{ exportRecorder.stop(); }catch(e){}
         downloadBtn.disabled = false;
         downloadBtn.textContent = '⬇ Download video';
+        previewTrackingActive = wasTracking;
+        if(wasTracking) trackFaceForPreview();
         resolve();
       });
     });
   }
   document.getElementById('downloadVideoBtn').addEventListener('click', exportVideoWithStickers);
 
-  document.getElementById('exitPreviewBtn').addEventListener('click', goHome);
-  document.getElementById('closePreviewBtn').addEventListener('click', goHome);
+  document.getElementById('exitPreviewBtn').addEventListener('click', ()=>{ previewTrackingActive = false; goHome(); });
+  document.getElementById('closePreviewBtn').addEventListener('click', ()=>{ previewTrackingActive = false; goHome(); });
   document.getElementById('retakeBtn').addEventListener('click', ()=>{
+    previewTrackingActive = false;
     if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
     window.__lastRecordingUrl = null;
     window.__lastRecordingBlob = null;
