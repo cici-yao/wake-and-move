@@ -15,15 +15,18 @@ Traditional alarms rely on willpower at the exact moment willpower is lowest. Th
 
 ## Features
 
+- **Animated intro screen** — an original illustration (bed + a bouncing figure, hand-drawn in SVG) and a rotating headline before you ever set an alarm
 - **iOS-style alarm management** — multiple alarms, labels, custom synthesized sounds, enable/disable toggles
+- **Configurable difficulty per alarm** — Easy / Medium / Hard controls both how long you need to move (5 / 8 / 10 seconds) and how many brain teasers you need to solve back-to-back (1 / 3 / 5) if you take that path instead
+- **Selectable music genre** — Energetic, Lyrical, Playful, or Retro; the move-challenge picks a track to match
 - **On-device pose detection** — MoveNet (TensorFlow.js) tracks 17 body keypoints in real time through the browser, entirely client-side
 - **Movement verification, not fixed choreography** — any sufficiently large, continuous movement counts, normalized against body scale so it works at any distance from the camera
 - **Motion-sensor handoff** — the ringing screen watches the device's accelerometer and automatically advances to the move-challenge once it detects you've picked up the phone
-- **Video capture + sticker editor** — the whole challenge is recorded locally via `MediaRecorder`; afterward you can drag emoji stickers onto the clip (face-tracking-free, just manual placement) and download a new file with the stickers baked in — composited frame-by-frame onto a canvas and re-encoded client-side, no server involved
+- **Brain-teaser alternative** — don't want the camera on? Solve AI-generated brain teasers instead (a mix of lateral-thinking riddles and simple arithmetic), with a second LLM call judging each typed answer, tolerant of phrasing, typos, and synonyms rather than an exact string match
+- **Video capture + sticker editor** — the whole challenge is recorded locally via `MediaRecorder`; afterward you can drag emoji stickers onto the clip, including several that automatically follow your eyes/nose or sit on top of your head (reusing the same MoveNet pose model from recording, rather than a separate face-landmark model), then download a new file with everything baked in — composited frame-by-frame onto a canvas and re-encoded client-side, no server involved
 - **Procedurally generated audio** — both the alarm tones and the background music during the challenge are synthesized in real time with the Web Audio API — no licensed or external audio files
 - **Installable PWA** — has a manifest, service worker, and app icons; can be added to a phone's home screen and opens full-screen like a native app
-- **Optional AI coach & composer** — bring your own Anthropic or OpenAI API key and two things become dynamic: the "Congratulations!" line is written live by an LLM personalized to your time/difficulty/genre, and the move-challenge music sometimes gets a freshly AI-composed 16-step track (in the exact JSON shape the existing Web Audio sequencer already knows how to play) instead of one of the five built-in tracks
-- **Brain-teaser alternative** — don't want the camera on? Solve AI-generated brain teasers instead (a mix of lateral-thinking riddles and simple arithmetic). The alarm's difficulty setting controls how many you need to solve back-to-back — Easy: 1, Medium: 3, Hard: 5 — and a second LLM call judges each typed answer, allowing for phrasing, typos, and synonyms rather than an exact string match
+- **Optional AI coach & composer** — bring your own Anthropic, OpenAI, or DeepSeek API key and two things become dynamic: the "Congratulations!" line is written live by an LLM personalized to how the alarm was dismissed, and the move-challenge music sometimes gets a freshly AI-composed 16-step track (in the exact JSON shape the existing Web Audio sequencer already knows how to play) instead of one of the five built-in tracks
 
 ## Tech stack
 
@@ -45,13 +48,18 @@ flowchart TD
     C --> D[Movement scoring<br/>normalized by torso size]
     D -->|threshold met| E[Alarm dismissed]
     B --> F[MediaRecorder]
-    F --> G[Local video preview / save]
+    F --> G[Sticker editor + canvas re-encode]
+    G --> GD[Download]
     A --> H[Web Audio API<br/>synthesized alarm + music]
+    A -.optional, user's own key.-> K[LLM API<br/>Anthropic / OpenAI / DeepSeek]
+    K -.-> K1[AI-composed music track]
+    K -.-> K2[AI congratulatory line]
+    K -.-> K3[Brain-teaser generation + judging]
     A -.future.-> I[(Supabase<br/>Auth + Postgres)]
     I -.future.-> J[Cross-device alarm sync]
 ```
 
-Everything left of the dotted line runs today, fully client-side, with zero backend calls. The dotted portion (Supabase) is the planned next step for account-based sync — schema is already drafted in `supabase/schema.sql`.
+Everything except the two dotted branches runs today, fully client-side. The LLM branch is live but opt-in (needs a key entered in Settings); the Supabase branch is the planned next step for account-based sync — schema is already drafted in `supabase/schema.sql`.
 
 ## Where generative AI fits in this project
 
@@ -62,13 +70,14 @@ It's worth being precise about this, since it's easy to wave "AI" around without
 3. **AI-composed music.** The move-challenge already had a fully working procedural music engine — a 16-step sequencer synthesizing kicks, bass, and lead lines with the Web Audio API. Rather than always picking between five hand-written tracks, an LLM can be asked to *compose* a new one: it returns a JSON object in the exact shape the sequencer expects, which is then validated field-by-field — clamped frequency ranges, whitelisted oscillator types, checked array lengths — before it's trusted, the same way you'd treat any untrusted input from a third party. If it comes back malformed, or there's no key configured, the app silently keeps playing one of the built-in tracks.
 4. **The AI coach's congratulatory line.** The most decorative of the four — after each completed challenge (whichever path was used), an LLM is prompted with how it was solved and writes a one-off congratulatory line in response.
 
-(2), (3), and (4) are all opt-in and require the person's own API key (see the in-app Settings screen for the security tradeoffs of calling a provider directly from the browser, and why a real product would proxy this through a backend instead).
+(2), (3), and (4) are all opt-in and require the person's own API key for one of three providers (Anthropic, OpenAI, or DeepSeek — see the in-app Settings screen for the security tradeoffs of calling a provider directly from the browser, and why a real product would proxy this through a backend instead).
 
 ## Technical highlights
 
 A few decisions worth calling out beyond "it uses API X":
 
 - **Baking stickers into a downloadable video without a server.** There's no video-editing library or backend here — stickers are composited by drawing each video frame onto a `<canvas>` alongside the sticker positions, capturing that canvas as a live `MediaStream` via `canvas.captureStream()`, and recording *that* with a second `MediaRecorder` in real time as the clip plays through once. It also corrects for a subtlety: the live preview is CSS-mirrored for a natural selfie view, but the underlying decoded video frames aren't — so the canvas draw step re-applies that mirror so the downloaded file matches what was actually seen on screen.
+- **Repurposing a body-pose model as an approximate face tracker.** The "follow the face" stickers (sunglasses, disguise, crown, halo, top hat) don't use a dedicated face-landmark model — they reuse the same MoveNet detector already loaded for the move challenge, which only exposes single points for each eye and the nose (no jaw, no face outline, no rotation, and no head-top point at all — that one's extrapolated from eye spacing). Sticker position and scale are derived from eye-to-eye distance; this is an honest approximation, not pixel-perfect tracking, and the in-app copy says so rather than overselling it. Positions persist across any single frame where a face isn't detected, so a brief tracking miss doesn't make a sticker jump.
 
 - **Scale-invariant movement scoring** — rather than raw pixel displacement, movement is measured as average keypoint displacement *normalized by torso length* (shoulder-to-hip distance). Without this, the same physical movement registers as a bigger signal when close to the camera than far away, making a single threshold unusable.
 - **Frame-rate-independent progress accumulation** — progress fills based on elapsed wall-clock time (`dt`) rather than a fixed per-frame increment, with `dt` clamped to avoid a huge jump if the tab was backgrounded and `requestAnimationFrame` paused.
