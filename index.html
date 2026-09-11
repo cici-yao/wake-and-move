@@ -385,6 +385,12 @@
     margin-top: 8px;
     font-style: italic;
   }
+  .riddle-text{
+    font-size: 18px;
+    line-height: 1.6;
+    color: var(--text);
+    min-height: 54px;
+  }
   .encourage-line{
     font-family: var(--font-display);
     font-size: 22px;
@@ -580,7 +586,7 @@
   <div class="wrap">
     <div class="kicker">Optional</div>
     <h1>AI <span>coach</span></h1>
-    <div class="sub">Give it your own API key and the "Congratulations!" line after each challenge gets written live by a real language model instead of picked from a fixed list. Skip this entirely and the app works exactly the same, just with the built-in lines.</div>
+    <div class="sub">Give it your own API key and two things change: the "Congratulations!" line gets written live by a real language model, and the move-challenge music sometimes gets freshly composed instead of picked from the built-in tracks. Skip this entirely and the app works exactly the same, just with the built-in lines and tracks.</div>
 
     <div class="card">
       <div class="field">
@@ -678,7 +684,31 @@
     <div class="ring-clock" id="ringClock">00:00</div>
     <div class="ring-label" id="ringLabel">Alarm</div>
     <button class="btn" id="continueManualBtn">I'm up — let's move</button>
+    <button class="btn ghost" id="tryRiddleBtn" style="margin-top:10px;">🧠 Solve a riddle instead</button>
     <div class="ring-hint" id="ringHint">Pick up your phone or start moving — we'll detect it and take you to the move challenge automatically.</div>
+  </div>
+</div>
+
+<!-- ============ SCREEN: BRAIN TEASER ============ -->
+<div class="screen" id="screenRiddle">
+  <div class="wrap">
+    <div class="kicker">Alarm ringing</div>
+    <h1>Wake your <span>brain</span> up</h1>
+    <div class="sub">Answer the riddle correctly to dismiss the alarm — no camera needed.</div>
+
+    <div class="card">
+      <div id="riddleText" class="riddle-text">🧠 Thinking of a good one…</div>
+      <div class="field" style="margin-top:16px; margin-bottom:0;">
+        <input type="text" id="riddleAnswer" placeholder="Your answer" disabled>
+      </div>
+    </div>
+    <div id="riddleFeedback" class="note" style="min-height:18px;"></div>
+
+    <div class="row">
+      <button class="btn" id="submitRiddleBtn" disabled>Submit answer</button>
+      <button class="btn ghost" id="newRiddleBtn" disabled>↺ New riddle</button>
+      <button class="btn ghost" id="riddleToDanceBtn">🕺 Switch to dance instead</button>
+    </div>
   </div>
 </div>
 
@@ -785,6 +815,7 @@
     settings: document.getElementById('screenSettings'),
     edit: document.getElementById('screenEdit'),
     ringing: document.getElementById('screenRinging'),
+    riddle: document.getElementById('screenRiddle'),
     dance: document.getElementById('screenDance'),
     success: document.getElementById('screenSuccess'),
     preview: document.getElementById('screenPreview'),
@@ -978,26 +1009,32 @@
   // own key. Resolves to null (never throws) on any missing key, network
   // failure, timeout, or bad response, so the caller can always fall back
   // to the built-in encouragement lines without extra error handling.
-  async function tryGenerateAIEncouragement({ elapsedSeconds, difficulty, genre, label }){
+  async function tryGenerateAIEncouragement({ elapsedSeconds, mode, difficulty, genre, label }){
+    const action = mode === 'riddle'
+      ? `by correctly solving a brain-teaser riddle in ${elapsedSeconds} seconds`
+      : `by moving in front of a camera for ${elapsedSeconds} seconds straight (difficulty: ${difficulty || 'medium'}, "${genre || 'energetic'}"-style music was playing)`;
+    const prompt = `Someone just turned off their "get out of bed" alarm ${action}, alarm labeled "${label || 'Alarm'}". Write ONE short, funny, warm congratulatory line for them. Under 15 words. No quotation marks, no hashtags, no emoji.`;
+    const text = await callLLM(prompt, { maxTokens: 40, timeoutMs: 6000 });
+    return text ? text.replace(/^["']|["']$/g, '') : null;
+  }
+
+  // Shared low-level call used by both the encouragement line and the
+  // AI-composed track. Returns the raw text response, or null on any
+  // failure — callers are responsible for parsing/validating it.
+  async function callLLM(prompt, { maxTokens = 40, timeoutMs = 8000 } = {}){
     const settings = loadAiSettings();
     if(!settings || !settings.apiKey) return null;
-
-    const prompt = `Someone just turned off their "get out of bed" alarm by moving in front of a camera for ${elapsedSeconds} seconds straight (difficulty: ${difficulty || 'medium'}, alarm labeled "${label || 'Alarm'}", "${genre || 'energetic'}"-style music was playing). Write ONE short, funny, warm congratulatory line for them. Under 15 words. No quotation marks, no hashtags, no emoji.`;
-
     const controller = new AbortController();
-    const timeoutId = setTimeout(()=> controller.abort(), 6000);
+    const timeoutId = setTimeout(()=> controller.abort(), timeoutMs);
     try{
       let text = null;
       if(settings.provider === 'openai'){
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${settings.apiKey}`,
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${settings.apiKey}` },
           body: JSON.stringify({
             model: settings.model || DEFAULT_MODELS.openai,
-            max_tokens: 40,
+            max_tokens: maxTokens,
             messages: [{ role: 'user', content: prompt }],
           }),
           signal: controller.signal,
@@ -1012,16 +1049,11 @@
             'Content-Type': 'application/json',
             'x-api-key': settings.apiKey,
             'anthropic-version': '2023-06-01',
-            // Required to call the API directly from a browser at all —
-            // Anthropic disables this by default because shipping a key
-            // to end users' browsers is normally the wrong move. We do it
-            // here anyway, on purpose, for a self-hosted personal demo,
-            // and say so in the settings screen.
             'anthropic-dangerous-direct-browser-access': 'true',
           },
           body: JSON.stringify({
             model: settings.model || DEFAULT_MODELS.anthropic,
-            max_tokens: 40,
+            max_tokens: maxTokens,
             messages: [{ role: 'user', content: prompt }],
           }),
           signal: controller.signal,
@@ -1030,13 +1062,110 @@
         const data = await res.json();
         text = data && data.content && data.content[0] && data.content[0].text;
       }
-      if(!text) return null;
-      return text.trim().replace(/^["']|["']$/g, '');
+      return text ? text.trim() : null;
     }catch(e){
-      return null; // offline, bad key, CORS, timeout — always fail quietly
+      return null;
     }finally{
       clearTimeout(timeoutId);
     }
+  }
+
+  // ---- AI-composed music track ----
+  // Asks the model for a 16-step pattern in the exact shape our existing
+  // Web Audio sequencer already knows how to play (see TRACKS below), then
+  // validates every field before it's trusted. This is the important part:
+  // an LLM's JSON output is untrusted input, no different from a network
+  // response from any other third party — wrong array length, an out-of-
+  // range frequency, or a typo'd oscillator type would either throw inside
+  // the audio engine or produce ear-splitting noise if used directly.
+  const OSC_TYPES = ['sine','square','sawtooth','triangle'];
+
+  function validateAiTrack(obj){
+    try{
+      if(!obj || typeof obj !== 'object') return null;
+      const bpm = Number(obj.bpm);
+      if(!isFinite(bpm) || bpm < 70 || bpm > 180) return null;
+
+      const bassType = OSC_TYPES.includes(obj.bassType) ? obj.bassType : 'sawtooth';
+      const leadType = OSC_TYPES.includes(obj.leadType) ? obj.leadType : 'square';
+      const hihatRaw = Number(obj.hihatOpenEvery);
+      const hihatOpenEvery = (isFinite(hihatRaw) && hihatRaw >= 1 && hihatRaw <= 16) ? Math.round(hihatRaw) : 4;
+
+      function toBoolArray16(arr){
+        const out = [];
+        for(let i=0;i<16;i++) out.push(Array.isArray(arr) && arr[i] ? 1 : 0);
+        return out;
+      }
+      function toFreqArray16(arr, min, max){
+        const out = [];
+        for(let i=0;i<16;i++){
+          const v = Array.isArray(arr) ? arr[i] : null;
+          if(v === null || v === undefined){ out.push(null); continue; }
+          if(typeof v === 'object' && Array.isArray(v.glide) && v.glide.length === 2){
+            const a = Number(v.glide[0]), b = Number(v.glide[1]);
+            out.push((isFinite(a) && isFinite(b) && a>=80 && a<=2000 && b>=80 && b<=2000) ? { glide: [a,b] } : null);
+            continue;
+          }
+          const f = Number(v);
+          out.push((isFinite(f) && f >= min && f <= max) ? f : null);
+        }
+        return out;
+      }
+
+      const kick = toBoolArray16(obj.kick);
+      const bass = toFreqArray16(obj.bass, 60, 400);
+      const lead = toFreqArray16(obj.lead, 150, 1600);
+      const name = (typeof obj.name === 'string' && obj.name.trim()) ? obj.name.trim().slice(0, 40) : 'AI Composition';
+
+      // require at least a little actual content, or this "track" would just be silence
+      const hasContent = kick.some(Boolean) || bass.some(v=>v!==null) || lead.some(v=>v!==null);
+      if(!hasContent) return null;
+
+      return { name, genre: 'ai', bpm, bassType, leadType, hihatOpenEvery, kick, bass, lead };
+    }catch(e){
+      return null;
+    }
+  }
+
+  async function generateRiddle(){
+    const prompt = `Give me one short, clever brain-teaser riddle (the kind meant to wake someone's brain up in the morning) — a classic lateral-thinking riddle or wordplay riddle, not trivia. Reply with ONLY the riddle question itself, one or two sentences, no answer, no preamble, no quotation marks.`;
+    const text = await callLLM(prompt, { maxTokens: 80, timeoutMs: 8000 });
+    return text ? text.replace(/^["']|["']$/g, '') : null;
+  }
+
+  async function judgeRiddleAnswer(riddle, userAnswer){
+    const prompt = `Riddle: "${riddle}"\nSomeone answered: "${userAnswer}"\nIs that answer correct, or close enough to count (allow for phrasing/typos/synonyms)? Reply with ONLY a JSON object, no markdown fences: {"correct": true or false, "feedback": "one short sentence, under 15 words — if correct, something congratulatory; if wrong, a gentle hint, not the answer itself"}`;
+    const raw = await callLLM(prompt, { maxTokens: 100, timeoutMs: 8000 });
+    if(!raw) return null;
+    try{
+      const cleaned = raw.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if(typeof parsed.correct !== 'boolean') return null;
+      return { correct: parsed.correct, feedback: typeof parsed.feedback === 'string' ? parsed.feedback : '' };
+    }catch(e){ return null; }
+  }
+
+  async function tryGenerateAITrack(genre){
+    const prompt = `You are composing a short 16-step looped instrumental pattern for an alarm-clock app's "get up and dance" screen. Mood: "${genre}" (energetic=upbeat electronic, lyrical=soft and mellow, playful=bouncy and goofy, retro=8-bit chiptune).
+
+Reply with ONLY a single JSON object, no markdown fences, no commentary, in exactly this shape:
+{
+  "name": "short catchy track name",
+  "bpm": <number 70-180>,
+  "bassType": "sine" | "square" | "sawtooth" | "triangle",
+  "leadType": "sine" | "square" | "sawtooth" | "triangle",
+  "hihatOpenEvery": <integer 2-8>,
+  "kick": [16 values, each 0 or 1],
+  "bass": [16 values, each either a number in Hz between 60-400, or null],
+  "lead": [16 values, each either a number in Hz between 150-1600, or null, or {"glide":[fromHz,toHz]} for an occasional fun pitch slide]
+}`;
+    const raw = await callLLM(prompt, { maxTokens: 500, timeoutMs: 8000 });
+    if(!raw) return null;
+    // Models sometimes wrap JSON in ```json fences despite instructions — strip them defensively.
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    let parsed;
+    try{ parsed = JSON.parse(cleaned); }catch(e){ return null; }
+    return validateAiTrack(parsed);
   }
 
   function setSegmentedValue(container, value){
@@ -1245,8 +1374,93 @@
     TARGET_SECONDS = difficultySeconds[currentAlarm && currentAlarm.difficulty] || 8;
     showScreen('dance');
     resetDanceState();
-    startDanceMusic((currentAlarm && currentAlarm.musicGenre) || 'energetic');
+    const genre = (currentAlarm && currentAlarm.musicGenre) || 'energetic';
+    startDanceMusic(genre);
+    attemptAiTrackSwap(genre);
   }
+
+  /* ============================================================
+     BRAIN TEASER — alternative way to dismiss the alarm, no camera
+     ============================================================ */
+  let currentRiddle = null;
+  let riddleStartTime = null;
+
+  function proceedToRiddle(){
+    clearInterval(ringClockInterval);
+    detachMotionListener();
+    stopAlarmLoop();
+    showScreen('riddle');
+    loadRiddleScreen();
+  }
+
+  function loadRiddleScreen(){
+    currentRiddle = null;
+    riddleStartTime = performance.now();
+    const riddleTextEl = document.getElementById('riddleText');
+    const answerInput = document.getElementById('riddleAnswer');
+    const submitBtn = document.getElementById('submitRiddleBtn');
+    const newBtn = document.getElementById('newRiddleBtn');
+    const feedbackEl = document.getElementById('riddleFeedback');
+
+    riddleTextEl.textContent = '🧠 Thinking of a good one…';
+    answerInput.value = '';
+    answerInput.disabled = true;
+    submitBtn.disabled = true;
+    newBtn.disabled = true;
+    feedbackEl.textContent = '';
+
+    generateRiddle().then(riddle=>{
+      if(!screens.riddle.classList.contains('active')) return; // navigated away already
+      if(!riddle){
+        riddleTextEl.textContent = "Couldn't reach the AI to generate a riddle — check your API key in Settings, or your connection.";
+        feedbackEl.textContent = 'You can try again, or switch to the dance challenge below.';
+        newBtn.disabled = false;
+        return;
+      }
+      currentRiddle = riddle;
+      riddleTextEl.textContent = riddle;
+      answerInput.disabled = false;
+      submitBtn.disabled = false;
+      newBtn.disabled = false;
+      answerInput.focus();
+    });
+  }
+
+  async function submitRiddleAnswer(){
+    const answerInput = document.getElementById('riddleAnswer');
+    const submitBtn = document.getElementById('submitRiddleBtn');
+    const feedbackEl = document.getElementById('riddleFeedback');
+    const answer = answerInput.value.trim();
+    if(!answer || !currentRiddle || submitBtn.disabled) return;
+
+    submitBtn.disabled = true;
+    feedbackEl.textContent = 'Checking your answer…';
+    const result = await judgeRiddleAnswer(currentRiddle, answer);
+    if(!screens.riddle.classList.contains('active')) return; // navigated away mid-check
+
+    if(!result){
+      feedbackEl.textContent = "Couldn't check that answer just now — try submitting again.";
+      submitBtn.disabled = false;
+      return;
+    }
+    if(result.correct){
+      feedbackEl.textContent = result.feedback || 'Correct!';
+      const elapsed = riddleStartTime ? Math.round((performance.now() - riddleStartTime)/1000) : 0;
+      setTimeout(()=> showCompletionScreen({ elapsedSeconds: elapsed, mode: 'riddle', hasVideo: false }), 600);
+    } else {
+      feedbackEl.textContent = result.feedback || 'Not quite — try again.';
+      submitBtn.disabled = false;
+      answerInput.focus();
+    }
+  }
+
+  document.getElementById('tryRiddleBtn').addEventListener('click', proceedToRiddle);
+  document.getElementById('newRiddleBtn').addEventListener('click', loadRiddleScreen);
+  document.getElementById('riddleToDanceBtn').addEventListener('click', ()=> proceedToDance());
+  document.getElementById('submitRiddleBtn').addEventListener('click', submitRiddleAnswer);
+  document.getElementById('riddleAnswer').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') submitRiddleAnswer();
+  });
 
   /* ============================================================
      BACKGROUND MUSIC — procedurally generated (no copyrighted audio),
@@ -1406,6 +1620,25 @@
     const trackNameEl = document.getElementById('trackName');
     if(trackNameEl) trackNameEl.textContent = '· ' + currentTrack.name;
   }
+
+  // Starts playing a local track immediately (zero latency — the person
+  // shouldn't stand there in silence waiting on a network call), then
+  // asks the model for an original one in the background. If a valid
+  // track comes back before the challenge ends, hot-swaps the sequencer
+  // over to it and relabels the track name so it's obvious it changed.
+  async function attemptAiTrackSwap(genre){
+    const aiTrack = await tryGenerateAITrack(genre);
+    if(!aiTrack) return;
+    if(!screens.dance.classList.contains('active') || !musicInterval || alarmSolved) return;
+    currentTrack = aiTrack;
+    STEP_DUR = 60/currentTrack.bpm/4;
+    musicStep = 0;
+    clearInterval(musicInterval);
+    scheduleMusicStep();
+    musicInterval = setInterval(scheduleMusicStep, STEP_DUR*1000);
+    const trackNameEl = document.getElementById('trackName');
+    if(trackNameEl) trackNameEl.textContent = '· ✨ ' + currentTrack.name + ' (AI-composed)';
+  }
   function stopDanceMusic(){
     if(musicInterval) clearInterval(musicInterval);
     musicInterval = null;
@@ -1515,27 +1748,30 @@
     recBadge.style.display = 'flex';
   }
 
-  function finishChallenge(elapsedSeconds){
-    stopDanceMusic();
-
-    // Show the celebration screen immediately — don't make the person
-    // wait on video encoding (or an AI call) before they get any feedback.
+  // Shared by both ways of dismissing the alarm (dance challenge or riddle).
+  // Shows the celebration screen immediately with a built-in line, then
+  // asks the AI coach for a personalized one in the background and swaps
+  // it in if it arrives while the person is still on this screen.
+  function showCompletionScreen({ elapsedSeconds, mode, hasVideo }){
     document.getElementById('completeSeconds').textContent = elapsedSeconds;
     const encourageEl = document.getElementById('encourageLine');
     encourageEl.textContent = ENCOURAGEMENTS[Math.floor(Math.random()*ENCOURAGEMENTS.length)];
+    encourageEl.style.opacity = '1';
     const aiTagEl = document.getElementById('aiTag');
     if(aiTagEl) aiTagEl.style.display = 'none';
     const viewBtn = document.getElementById('viewRecordingBtn');
-    viewBtn.disabled = true;
-    viewBtn.textContent = 'Preparing video…';
+    if(hasVideo){
+      viewBtn.style.display = '';
+      viewBtn.disabled = true;
+      viewBtn.textContent = 'Preparing video…';
+    } else {
+      viewBtn.style.display = 'none';
+    }
     showScreen('success');
 
-    // If an AI coach key is configured, ask it for a one-off personalized
-    // line and swap it in if it arrives while the person is still looking
-    // at this screen. If not configured, or it fails for any reason, the
-    // built-in line above just stays put — nothing else needs to change.
     tryGenerateAIEncouragement({
       elapsedSeconds,
+      mode,
       difficulty: currentAlarm && currentAlarm.difficulty,
       genre: currentAlarm && currentAlarm.musicGenre,
       label: currentAlarm && currentAlarm.label,
@@ -1549,6 +1785,15 @@
         if(aiTagEl) aiTagEl.style.display = 'block';
       }, 200);
     });
+  }
+
+  function finishChallenge(elapsedSeconds){
+    stopDanceMusic();
+
+    // Show the celebration screen immediately — don't make the person
+    // wait on video encoding (or an AI call) before they get any feedback.
+    showCompletionScreen({ elapsedSeconds, mode: 'dance', hasVideo: true });
+    const viewBtn = document.getElementById('viewRecordingBtn');
 
     // Recording finishes in the background; the "View recording" button
     // lights up once it's ready. If there's no recorder at all, hide that
@@ -1724,7 +1969,9 @@
     window.__lastRecordingBlob = null;
     showScreen('dance');
     resetDanceState();
-    startDanceMusic((currentAlarm && currentAlarm.musicGenre) || 'energetic');
+    const retakeGenre = (currentAlarm && currentAlarm.musicGenre) || 'energetic';
+    startDanceMusic(retakeGenre);
+    attemptAiTrackSwap(retakeGenre);
   });
 
 })();

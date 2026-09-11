@@ -22,7 +22,8 @@ Traditional alarms rely on willpower at the exact moment willpower is lowest. Th
 - **Video capture + preview** — the whole challenge is recorded locally via `MediaRecorder`; you can preview, save, or retake before dismissing
 - **Procedurally generated audio** — both the alarm tones and the background music during the challenge are synthesized in real time with the Web Audio API — no licensed or external audio files
 - **Installable PWA** — has a manifest, service worker, and app icons; can be added to a phone's home screen and opens full-screen like a native app
-- **Optional AI coach** — bring your own Anthropic or OpenAI API key and the "Congratulations!" line after each challenge is written live by an LLM instead of picked from a fixed list, personalized to how long the challenge took and which difficulty/music you chose
+- **Optional AI coach & composer** — bring your own Anthropic or OpenAI API key and two things become dynamic: the "Congratulations!" line is written live by an LLM personalized to your time/difficulty/genre, and the move-challenge music sometimes gets a freshly AI-composed 16-step track (in the exact JSON shape the existing Web Audio sequencer already knows how to play) instead of one of the five built-in tracks
+- **Brain-teaser alternative** — don't want the camera on? Solve an AI-generated riddle instead. The alarm screen offers both paths; the riddle is generated fresh each time and a second LLM call judges whether your typed answer counts, allowing for phrasing, typos, and synonyms rather than an exact string match
 
 ## Tech stack
 
@@ -54,12 +55,14 @@ Everything left of the dotted line runs today, fully client-side, with zero back
 
 ## Where generative AI fits in this project
 
-It's worth being precise about this, since it's easy to wave "AI" around without saying which kind: the pose-detection model (MoveNet) is a **discriminative** model — given an image, it predicts where 17 joints are. It doesn't generate anything new. Generative AI shows up in this project in two distinct places:
+It's worth being precise about this, since it's easy to wave "AI" around without saying which kind: the pose-detection model (MoveNet) is a **discriminative** model — given an image, it predicts where 17 joints are. It doesn't generate anything new. Generative AI shows up in this project in four distinct places:
 
 1. **The build process itself.** This project was built through AI-assisted ("vibe coding") development — see the note below.
-2. **The AI coach feature.** After each completed challenge, an LLM (Claude or GPT, your choice) is prompted with how long the challenge took, the difficulty, and the music genre, and writes a one-off congratulatory line in response — this is a live text-generation call, not a lookup. It's opt-in and requires the person's own API key (see the in-app Settings screen for the security tradeoffs of calling a provider directly from the browser, and why a real product would proxy this through a backend instead).
+2. **The brain-teaser alternative.** This is the use case that plays most directly to an LLM's actual strength: understanding open-ended language, not generating audio. One call writes a riddle; a second call reads back whatever the person typed and judges whether it counts as correct, tolerant of phrasing, typos, and synonyms — something a hardcoded string match could never do. This was chosen deliberately over routes (like calling a music-generation API for audio) that ask a language model to do something closer to a different model family's job.
+3. **AI-composed music.** The move-challenge already had a fully working procedural music engine — a 16-step sequencer synthesizing kicks, bass, and lead lines with the Web Audio API. Rather than always picking between five hand-written tracks, an LLM can be asked to *compose* a new one: it returns a JSON object in the exact shape the sequencer expects, which is then validated field-by-field — clamped frequency ranges, whitelisted oscillator types, checked array lengths — before it's trusted, the same way you'd treat any untrusted input from a third party. If it comes back malformed, or there's no key configured, the app silently keeps playing one of the built-in tracks.
+4. **The AI coach's congratulatory line.** The most decorative of the four — after each completed challenge (whichever path was used), an LLM is prompted with how it was solved and writes a one-off congratulatory line in response.
 
-Both are genuinely different from the perception task the camera is doing, and the app is designed so it's obvious which is which.
+(2), (3), and (4) are all opt-in and require the person's own API key (see the in-app Settings screen for the security tradeoffs of calling a provider directly from the browser, and why a real product would proxy this through a backend instead).
 
 ## Technical highlights
 
