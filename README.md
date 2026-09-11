@@ -22,6 +22,7 @@ Traditional alarms rely on willpower at the exact moment willpower is lowest. Th
 - **Video capture + preview** — the whole challenge is recorded locally via `MediaRecorder`; you can preview, save, or retake before dismissing
 - **Procedurally generated audio** — both the alarm tones and the background music during the challenge are synthesized in real time with the Web Audio API — no licensed or external audio files
 - **Installable PWA** — has a manifest, service worker, and app icons; can be added to a phone's home screen and opens full-screen like a native app
+- **Optional AI coach** — bring your own Anthropic or OpenAI API key and the "Congratulations!" line after each challenge is written live by an LLM instead of picked from a fixed list, personalized to how long the challenge took and which difficulty/music you chose
 
 ## Tech stack
 
@@ -50,6 +51,15 @@ flowchart TD
 ```
 
 Everything left of the dotted line runs today, fully client-side, with zero backend calls. The dotted portion (Supabase) is the planned next step for account-based sync — schema is already drafted in `supabase/schema.sql`.
+
+## Where generative AI fits in this project
+
+It's worth being precise about this, since it's easy to wave "AI" around without saying which kind: the pose-detection model (MoveNet) is a **discriminative** model — given an image, it predicts where 17 joints are. It doesn't generate anything new. Generative AI shows up in this project in two distinct places:
+
+1. **The build process itself.** This project was built through AI-assisted ("vibe coding") development — see the note below.
+2. **The AI coach feature.** After each completed challenge, an LLM (Claude or GPT, your choice) is prompted with how long the challenge took, the difficulty, and the music genre, and writes a one-off congratulatory line in response — this is a live text-generation call, not a lookup. It's opt-in and requires the person's own API key (see the in-app Settings screen for the security tradeoffs of calling a provider directly from the browser, and why a real product would proxy this through a backend instead).
+
+Both are genuinely different from the perception task the camera is doing, and the app is designed so it's obvious which is which.
 
 ## Technical highlights
 

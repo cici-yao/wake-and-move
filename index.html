@@ -140,6 +140,12 @@
   }
   .fab:hover{ filter:brightness(1.08); }
   .fab:active{ transform: scale(0.92); }
+  .fab-ghost{
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    font-size: 18px;
+  }
+  .fab-ghost:hover{ filter:none; border-color: var(--purple); }
   .alarm-list{ display:flex; flex-direction:column; gap:10px; }
   .alarm-row{
     background: var(--bg-raised);
@@ -373,6 +379,12 @@
   }
   .close-x:hover{ color: var(--text); border-color: var(--purple); }
   .mascot-mini{ width: 74px; height: 74px; display:block; margin: 0 auto 10px; overflow: visible; }
+  .ai-tag{
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    font-style: italic;
+  }
   .encourage-line{
     font-family: var(--font-display);
     font-size: 22px;
@@ -549,13 +561,54 @@
         <div class="kicker">Alarms</div>
         <h1>Wake &amp; <span>Move</span></h1>
       </div>
-      <button class="fab" id="addAlarmBtn" title="Add alarm">+</button>
+      <div style="display:flex; gap:10px; align-items:flex-start;">
+        <button class="fab fab-ghost" id="openSettingsBtn" title="AI coach settings">⚙️</button>
+        <button class="fab" id="addAlarmBtn" title="Add alarm">+</button>
+      </div>
     </div>
     <div class="alarm-list" id="alarmList"></div>
     <div class="note">
       <b>Known limitation:</b> browser tabs get suspended in the background or when the phone is locked,
       so alarms may not fire reliably while asleep. A production version would need a native wrapper
       (e.g. Capacitor) so the OS itself triggers the alarm. Use the alarm's <b>Test</b> button to try the full flow now.
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN: AI COACH SETTINGS ============ -->
+<div class="screen" id="screenSettings">
+  <div class="wrap">
+    <div class="kicker">Optional</div>
+    <h1>AI <span>coach</span></h1>
+    <div class="sub">Give it your own API key and the "Congratulations!" line after each challenge gets written live by a real language model instead of picked from a fixed list. Skip this entirely and the app works exactly the same, just with the built-in lines.</div>
+
+    <div class="card">
+      <div class="field">
+        <label class="field-label">Provider</label>
+        <select id="aiProvider">
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label">Model</label>
+        <input type="text" id="aiModel" placeholder="e.g. claude-haiku-4-5-20251001">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label class="field-label">API key</label>
+        <input type="password" id="aiApiKey" placeholder="Pasted key is stored only on this device">
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="btn" id="saveAiSettingsBtn">Save</button>
+      <button class="btn ghost" id="clearAiSettingsBtn">Clear key</button>
+      <button class="btn ghost" id="closeSettingsBtn">Back</button>
+    </div>
+    <div id="aiSettingsStatus" class="note" style="margin-top:14px;"></div>
+
+    <div class="note" style="margin-top:22px;">
+      <b>How this works, and why it's built this way:</b> your key is saved in this browser's <code>localStorage</code> and is sent directly from your device to the provider's API — it never touches any server of ours and is never written into this project's code or repository. That also means it's visible to anyone who opens this browser's dev tools, which is fine for trying this out yourself but is <b>not how you'd ship this to other people</b> — a real product would route this call through a backend (a Supabase Edge Function, for instance) so the key never lives in the browser at all. Leave this blank and the app falls back to a small set of built-in encouraging lines — nothing breaks either way.
     </div>
   </div>
 </div>
@@ -691,6 +744,7 @@
     <h1>Congratulations!</h1>
     <div class="sub" id="completeSub" style="font-size:17px; color:var(--text);">You woke up in <span id="completeSeconds">0</span> seconds.</div>
     <div class="encourage-line" id="encourageLine"></div>
+    <div class="ai-tag" id="aiTag" style="display:none;">✨ written live by your AI coach</div>
     <div class="row" style="margin-top:28px; justify-content:center;">
       <button class="btn" id="viewRecordingBtn" disabled>Preparing video…</button>
       <button class="btn ghost" id="successHomeBtn">🏠 Home</button>
@@ -728,6 +782,7 @@
   const screens = {
     home: document.getElementById('screenHome'),
     list: document.getElementById('screenList'),
+    settings: document.getElementById('screenSettings'),
     edit: document.getElementById('screenEdit'),
     ringing: document.getElementById('screenRinging'),
     dance: document.getElementById('screenDance'),
@@ -862,6 +917,127 @@
   }
 
   document.getElementById('addAlarmBtn').addEventListener('click', ()=> openEdit(null));
+
+  /* ============================================================
+     AI COACH SETTINGS
+     ============================================================ */
+  const AI_SETTINGS_KEY = 'wakeAndMove.aiSettings.v1';
+  const DEFAULT_MODELS = { anthropic: 'claude-haiku-4-5-20251001', openai: 'gpt-4o-mini' };
+
+  function loadAiSettings(){
+    try{
+      const raw = localStorage.getItem(AI_SETTINGS_KEY);
+      if(raw) return JSON.parse(raw);
+    }catch(e){ /* ignore */ }
+    return null;
+  }
+  function saveAiSettings(settings){
+    try{ localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings)); }
+    catch(e){ console.warn('Could not save AI settings:', e); }
+  }
+
+  const aiProviderEl = document.getElementById('aiProvider');
+  const aiModelEl = document.getElementById('aiModel');
+  const aiApiKeyEl = document.getElementById('aiApiKey');
+  const aiStatusEl = document.getElementById('aiSettingsStatus');
+
+  function openSettings(){
+    const s = loadAiSettings();
+    aiProviderEl.value = (s && s.provider) || 'anthropic';
+    aiModelEl.value = (s && s.model) || DEFAULT_MODELS[aiProviderEl.value];
+    aiApiKeyEl.value = (s && s.apiKey) || '';
+    aiStatusEl.textContent = s && s.apiKey
+      ? 'AI coach is on — a key is saved on this device.'
+      : 'AI coach is off — using the built-in encouraging lines.';
+    showScreen('settings');
+  }
+  aiProviderEl.addEventListener('change', ()=>{
+    // only replace the model field if it still matches a known default,
+    // so we don't clobber a custom model name someone typed in
+    if(Object.values(DEFAULT_MODELS).includes(aiModelEl.value.trim()) || !aiModelEl.value.trim()){
+      aiModelEl.value = DEFAULT_MODELS[aiProviderEl.value];
+    }
+  });
+
+  document.getElementById('openSettingsBtn').addEventListener('click', openSettings);
+  document.getElementById('closeSettingsBtn').addEventListener('click', ()=> showScreen('list'));
+  document.getElementById('saveAiSettingsBtn').addEventListener('click', ()=>{
+    const apiKey = aiApiKeyEl.value.trim();
+    saveAiSettings({ provider: aiProviderEl.value, model: aiModelEl.value.trim(), apiKey });
+    aiStatusEl.textContent = apiKey
+      ? 'Saved. The AI coach will kick in on your next completed challenge.'
+      : 'Saved with no key — using the built-in encouraging lines.';
+  });
+  document.getElementById('clearAiSettingsBtn').addEventListener('click', ()=>{
+    localStorage.removeItem(AI_SETTINGS_KEY);
+    aiApiKeyEl.value = '';
+    aiStatusEl.textContent = 'Key cleared — using the built-in encouraging lines.';
+  });
+
+  // Calls the chosen provider directly from the browser using the person's
+  // own key. Resolves to null (never throws) on any missing key, network
+  // failure, timeout, or bad response, so the caller can always fall back
+  // to the built-in encouragement lines without extra error handling.
+  async function tryGenerateAIEncouragement({ elapsedSeconds, difficulty, genre, label }){
+    const settings = loadAiSettings();
+    if(!settings || !settings.apiKey) return null;
+
+    const prompt = `Someone just turned off their "get out of bed" alarm by moving in front of a camera for ${elapsedSeconds} seconds straight (difficulty: ${difficulty || 'medium'}, alarm labeled "${label || 'Alarm'}", "${genre || 'energetic'}"-style music was playing). Write ONE short, funny, warm congratulatory line for them. Under 15 words. No quotation marks, no hashtags, no emoji.`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(()=> controller.abort(), 6000);
+    try{
+      let text = null;
+      if(settings.provider === 'openai'){
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${settings.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: settings.model || DEFAULT_MODELS.openai,
+            max_tokens: 40,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+          signal: controller.signal,
+        });
+        if(!res.ok) return null;
+        const data = await res.json();
+        text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      } else {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': settings.apiKey,
+            'anthropic-version': '2023-06-01',
+            // Required to call the API directly from a browser at all —
+            // Anthropic disables this by default because shipping a key
+            // to end users' browsers is normally the wrong move. We do it
+            // here anyway, on purpose, for a self-hosted personal demo,
+            // and say so in the settings screen.
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: settings.model || DEFAULT_MODELS.anthropic,
+            max_tokens: 40,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+          signal: controller.signal,
+        });
+        if(!res.ok) return null;
+        const data = await res.json();
+        text = data && data.content && data.content[0] && data.content[0].text;
+      }
+      if(!text) return null;
+      return text.trim().replace(/^["']|["']$/g, '');
+    }catch(e){
+      return null; // offline, bad key, CORS, timeout — always fail quietly
+    }finally{
+      clearTimeout(timeoutId);
+    }
+  }
 
   function setSegmentedValue(container, value){
     container.querySelectorAll('.segmented-option').forEach(btn=>{
@@ -1343,14 +1519,36 @@
     stopDanceMusic();
 
     // Show the celebration screen immediately — don't make the person
-    // wait on video encoding before they get any feedback.
+    // wait on video encoding (or an AI call) before they get any feedback.
     document.getElementById('completeSeconds').textContent = elapsedSeconds;
-    document.getElementById('encourageLine').textContent =
-      ENCOURAGEMENTS[Math.floor(Math.random()*ENCOURAGEMENTS.length)];
+    const encourageEl = document.getElementById('encourageLine');
+    encourageEl.textContent = ENCOURAGEMENTS[Math.floor(Math.random()*ENCOURAGEMENTS.length)];
+    const aiTagEl = document.getElementById('aiTag');
+    if(aiTagEl) aiTagEl.style.display = 'none';
     const viewBtn = document.getElementById('viewRecordingBtn');
     viewBtn.disabled = true;
     viewBtn.textContent = 'Preparing video…';
     showScreen('success');
+
+    // If an AI coach key is configured, ask it for a one-off personalized
+    // line and swap it in if it arrives while the person is still looking
+    // at this screen. If not configured, or it fails for any reason, the
+    // built-in line above just stays put — nothing else needs to change.
+    tryGenerateAIEncouragement({
+      elapsedSeconds,
+      difficulty: currentAlarm && currentAlarm.difficulty,
+      genre: currentAlarm && currentAlarm.musicGenre,
+      label: currentAlarm && currentAlarm.label,
+    }).then(text=>{
+      if(!text || !screens.success.classList.contains('active')) return;
+      encourageEl.style.transition = 'opacity .2s ease';
+      encourageEl.style.opacity = '0';
+      setTimeout(()=>{
+        encourageEl.textContent = text;
+        encourageEl.style.opacity = '1';
+        if(aiTagEl) aiTagEl.style.display = 'block';
+      }, 200);
+    });
 
     // Recording finishes in the background; the "View recording" button
     // lights up once it's ready. If there's no recorder at all, hide that
