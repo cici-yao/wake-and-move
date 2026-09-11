@@ -1981,7 +1981,7 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     bulletPool = BULLET_FALLBACKS.slice().sort(()=> Math.random()-0.5);
     bulletIndex = 0;
     spawnBullet();
-    bulletInterval = setInterval(spawnBullet, 1700);
+    bulletInterval = setInterval(spawnBullet, 3000);
   }
   function stopBulletStream(){
     if(bulletInterval) clearInterval(bulletInterval);
