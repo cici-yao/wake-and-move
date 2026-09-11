@@ -17,6 +17,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Wake & Move">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg: #15111f;
@@ -31,6 +34,7 @@
     --line: #332c4a;
     --danger: #ff6b5e;
     --ok: #5fe0a8;
+    --font-display: "Fredoka", "Space Grotesk", sans-serif;
   }
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html,body{
@@ -49,7 +53,11 @@
   }
   .wrap.wide{ max-width: 1000px; }
   .screen{ display:none; }
-  .screen.active{ display:block; }
+  .screen.active{ display:block; animation: screenEnter .35s ease; }
+  @keyframes screenEnter{
+    from{ opacity:0; transform: translateY(10px); }
+    to{ opacity:1; transform: translateY(0); }
+  }
 
   .kicker{
     color: var(--pink);
@@ -60,9 +68,10 @@
     margin-bottom: 10px;
   }
   h1{
+    font-family: var(--font-display);
     font-size: clamp(28px, 4vw, 38px);
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
     margin: 0 0 8px;
     line-height: 1.12;
   }
@@ -93,8 +102,10 @@
     text-align: center;
     display:inline-block;
     background: var(--grad);
+    transition: transform .1s ease, filter .15s ease, border-color .15s ease, color .15s ease;
   }
   .btn:hover{ filter: brightness(1.06); }
+  .btn:active{ transform: scale(0.96); }
   .btn:disabled{ opacity:.35; cursor:not-allowed; filter:none; }
   .btn.ghost{
     background: transparent;
@@ -125,8 +136,10 @@
     font-weight: 700;
     display:flex; align-items:center; justify-content:center;
     flex-shrink:0;
+    transition: transform .1s ease, filter .15s ease;
   }
   .fab:hover{ filter:brightness(1.08); }
+  .fab:active{ transform: scale(0.92); }
   .alarm-list{ display:flex; flex-direction:column; gap:10px; }
   .alarm-row{
     background: var(--bg-raised);
@@ -359,7 +372,9 @@
     cursor: pointer;
   }
   .close-x:hover{ color: var(--text); border-color: var(--purple); }
+  .mascot-mini{ width: 74px; height: 74px; display:block; margin: 0 auto 10px; overflow: visible; }
   .encourage-line{
+    font-family: var(--font-display);
     font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.01em;
@@ -438,9 +453,10 @@
     max-width: 560px;
   }
   .hero-cycle{
+    font-family: var(--font-display);
     font-size: clamp(28px, 6vw, 44px);
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
     line-height: 1.15;
     background: var(--grad);
     -webkit-background-clip: text;
@@ -653,12 +669,29 @@
 
 <!-- ============ SCREEN: CHALLENGE COMPLETE ============ -->
 <div class="screen" id="screenSuccess">
-  <div class="wrap">
+  <div class="wrap" style="text-align:center;">
+    <svg viewBox="0 0 100 100" class="mascot-mini" aria-hidden="true">
+      <defs>
+        <linearGradient id="successGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ff6fae"/>
+          <stop offset="55%" stop-color="#a78bfa"/>
+          <stop offset="100%" stop-color="#5b8cff"/>
+        </linearGradient>
+      </defs>
+      <g class="hero-figure">
+        <circle cx="50" cy="26" r="14" fill="#f4f2fb"/>
+        <path d="M50 40 L50 68" stroke="url(#successGrad)" stroke-width="7" stroke-linecap="round"/>
+        <path d="M50 46 L28 34" stroke="url(#successGrad)" stroke-width="6" stroke-linecap="round" class="hero-arm-l"/>
+        <path d="M50 46 L72 32" stroke="url(#successGrad)" stroke-width="6" stroke-linecap="round" class="hero-arm-r"/>
+        <path d="M50 68 L34 90" stroke="url(#successGrad)" stroke-width="6" stroke-linecap="round"/>
+        <path d="M50 68 L66 90" stroke="url(#successGrad)" stroke-width="6" stroke-linecap="round"/>
+      </g>
+    </svg>
     <div class="success-badge">✓ Alarm dismissed</div>
     <h1>Congratulations!</h1>
     <div class="sub" id="completeSub" style="font-size:17px; color:var(--text);">You woke up in <span id="completeSeconds">0</span> seconds.</div>
     <div class="encourage-line" id="encourageLine"></div>
-    <div class="row" style="margin-top:28px;">
+    <div class="row" style="margin-top:28px; justify-content:center;">
       <button class="btn" id="viewRecordingBtn" disabled>Preparing video…</button>
       <button class="btn ghost" id="successHomeBtn">🏠 Home</button>
     </div>
