@@ -348,13 +348,50 @@
 
   /* ---------- Preview screen (screen: preview) ---------- */
   .preview-video{
-    width:100%;
-    border-radius: 16px;
-    border: 1px solid var(--line);
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit: cover;
     background:#000;
     display:block;
     transform: scaleX(-1);
   }
+  .sticker-stage{ touch-action: none; }
+  .sticker-layer{
+    position:absolute; inset:0;
+    overflow: hidden;
+  }
+  .sticker{
+    position:absolute;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    user-select: none;
+    line-height: 1;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));
+  }
+  .sticker:active{ cursor: grabbing; }
+  .sticker.selected{
+    outline: 2px dashed var(--pink);
+    outline-offset: 6px;
+    border-radius: 50%;
+  }
+  .sticker-palette{
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .sticker-choice{
+    all: unset;
+    box-sizing: border-box;
+    cursor: pointer;
+    text-align:center;
+    font-size: 26px;
+    padding: 10px 0;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+  }
+  .sticker-choice:hover{ border-color: var(--purple); }
+  .sticker-choice:active{ transform: scale(0.94); }
   .success-badge{
     display:inline-flex; align-items:center; gap:9px;
     padding: 8px 16px; border-radius: 999px;
@@ -791,16 +828,52 @@
 
 <!-- ============ SCREEN: VIDEO PREVIEW ============ -->
 <div class="screen" id="screenPreview">
-  <div class="wrap" style="position:relative;">
+  <div class="wrap wide" style="position:relative;">
     <button class="close-x" id="closePreviewBtn" title="Exit" aria-label="Exit">✕</button>
     <div class="success-badge">✓ Alarm dismissed</div>
     <h1>Nice <span>moves</span></h1>
-    <div class="sub">Here's what we caught on camera. Save it if you want to keep it, then exit whenever you're ready.</div>
-    <video class="preview-video" id="previewVideo" controls playsinline></video>
-    <div class="row" style="margin-top:20px;">
-      <button class="btn" id="saveVideoBtn">Save video</button>
-      <button class="btn ghost" id="retakeBtn">↺ Retake</button>
-      <button class="btn ghost" id="exitPreviewBtn">🏠 Home</button>
+    <div class="sub">Add some stickers if you want, then download your clip. You can always come back here — nothing here locks you in.</div>
+
+    <div class="layout">
+      <div class="stage sticker-stage" id="stickerStage">
+        <video class="preview-video" id="previewVideo" playsinline muted></video>
+        <div class="sticker-layer" id="stickerLayer"></div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-label">Add a sticker</div>
+          <div class="sticker-palette" id="stickerPalette">
+            <button class="sticker-choice" data-emoji="😎">😎</button>
+            <button class="sticker-choice" data-emoji="🥳">🥳</button>
+            <button class="sticker-choice" data-emoji="👑">👑</button>
+            <button class="sticker-choice" data-emoji="⭐">⭐</button>
+            <button class="sticker-choice" data-emoji="🔥">🔥</button>
+            <button class="sticker-choice" data-emoji="💪">💪</button>
+            <button class="sticker-choice" data-emoji="😴">😴</button>
+            <button class="sticker-choice" data-emoji="🎉">🎉</button>
+          </div>
+          <div class="note" style="margin-top:12px;">Tap a sticker to add it, drag it onto your face (or anywhere), tap it again to select it and use the controls below.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Selected sticker</div>
+          <div class="row">
+            <button class="btn ghost sm" id="stickerSmallerBtn">➖ Smaller</button>
+            <button class="btn ghost sm" id="stickerBiggerBtn">➕ Bigger</button>
+            <button class="btn ghost sm" id="stickerRemoveBtn">🗑 Remove</button>
+          </div>
+          <div class="note" id="stickerHint" style="margin-top:10px;">No sticker selected yet.</div>
+        </div>
+
+        <div class="card">
+          <button class="btn block" id="downloadVideoBtn">⬇ Download video</button>
+          <div class="row" style="margin-top:12px;">
+            <button class="btn ghost" id="retakeBtn">↺ Retake</button>
+            <button class="btn ghost" id="exitPreviewBtn">🏠 Home</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1849,18 +1922,26 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     mediaRecorder.onstop = ()=>{
       const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
       const url = URL.createObjectURL(blob);
-      document.getElementById('previewVideo').src = url;
+      const previewVideoEl = document.getElementById('previewVideo');
+      previewVideoEl.src = url;
+      previewVideoEl.loop = true;
       window.__lastRecordingUrl = url;
       window.__lastRecordingBlob = blob;
       stopCamera();
       viewBtn.disabled = false;
-      viewBtn.textContent = '🎥 View recording';
+      viewBtn.textContent = '🎥 Preview recording';
+      resetStickers();
     };
     try{ mediaRecorder.stop(); }catch(e){ viewBtn.style.display = 'none'; stopCamera(); }
     recBadge.style.display = 'none';
   }
 
-  document.getElementById('viewRecordingBtn').addEventListener('click', ()=> showScreen('preview'));
+  document.getElementById('viewRecordingBtn').addEventListener('click', ()=>{
+    showScreen('preview');
+    const previewVideoEl = document.getElementById('previewVideo');
+    previewVideoEl.currentTime = 0;
+    previewVideoEl.play().catch(()=>{ /* autoplay blocked — not critical, user can still add stickers */ });
+  });
 
   function goHome(){
     if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
@@ -1992,24 +2073,195 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
   }
 
   /* ============================================================
-     PREVIEW SCREEN
+     PREVIEW SCREEN — sticker editor + composited download
      ============================================================ */
-  document.getElementById('saveVideoBtn').addEventListener('click', ()=>{
-    if(!window.__lastRecordingBlob) return;
-    const a = document.createElement('a');
-    a.href = window.__lastRecordingUrl;
-    const stamp = new Date().toISOString().replace(/[:.]/g,'-');
-    a.download = `wake-and-move-${stamp}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  let stickers = [];
+  let stickerIdCounter = 0;
+  let selectedStickerId = null;
+
+  function resetStickers(){
+    stickers = [];
+    selectedStickerId = null;
+    renderStickers();
+  }
+
+  function renderStickers(){
+    const layer = document.getElementById('stickerLayer');
+    const hintEl = document.getElementById('stickerHint');
+    layer.innerHTML = '';
+    stickers.forEach(s=>{
+      const el = document.createElement('div');
+      el.className = 'sticker' + (s.id === selectedStickerId ? ' selected' : '');
+      el.textContent = s.emoji;
+      el.style.left = (s.xPct*100) + '%';
+      el.style.top = (s.yPct*100) + '%';
+      const stageEl = document.getElementById('stickerStage');
+      el.style.fontSize = (s.sizePct * stageEl.clientWidth) + 'px';
+      el.addEventListener('pointerdown', (e)=> startDragSticker(e, s));
+      layer.appendChild(el);
+    });
+    hintEl.textContent = selectedStickerId
+      ? 'Sticker selected — drag it, resize it, or remove it.'
+      : (stickers.length ? 'Tap a sticker on the video to select it.' : 'No sticker selected yet.');
+  }
+
+  function startDragSticker(e, stickerObj){
+    e.preventDefault();
+    selectedStickerId = stickerObj.id;
+    renderStickers();
+    const stageEl = document.getElementById('stickerStage');
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    let moved = false;
+
+    function onMove(ev){
+      moved = true;
+      const rect = stageEl.getBoundingClientRect();
+      let x = (ev.clientX - rect.left) / rect.width;
+      let y = (ev.clientY - rect.top) / rect.height;
+      stickerObj.xPct = Math.min(1, Math.max(0, x));
+      stickerObj.yPct = Math.min(1, Math.max(0, y));
+      target.style.left = (stickerObj.xPct*100) + '%';
+      target.style.top = (stickerObj.yPct*100) + '%';
+    }
+    function onUp(){
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+    }
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+  }
+
+  document.querySelectorAll('.sticker-choice').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const s = { id: ++stickerIdCounter, emoji: btn.dataset.emoji, xPct: 0.5, yPct: 0.35, sizePct: 0.18 };
+      stickers.push(s);
+      selectedStickerId = s.id;
+      renderStickers();
+    });
   });
+
+  function getSelectedSticker(){
+    return stickers.find(s=>s.id === selectedStickerId) || null;
+  }
+  document.getElementById('stickerBiggerBtn').addEventListener('click', ()=>{
+    const s = getSelectedSticker();
+    if(!s) return;
+    s.sizePct = Math.min(0.5, s.sizePct + 0.02);
+    renderStickers();
+  });
+  document.getElementById('stickerSmallerBtn').addEventListener('click', ()=>{
+    const s = getSelectedSticker();
+    if(!s) return;
+    s.sizePct = Math.max(0.05, s.sizePct - 0.02);
+    renderStickers();
+  });
+  document.getElementById('stickerRemoveBtn').addEventListener('click', ()=>{
+    if(selectedStickerId === null) return;
+    stickers = stickers.filter(s=>s.id !== selectedStickerId);
+    selectedStickerId = null;
+    renderStickers();
+  });
+
+  // Renders the video + stickers together onto a canvas in real time and
+  // records THAT canvas — the only reliable way to "bake" an overlay into
+  // a downloadable video file in a browser without a server-side encoder.
+  // Mirrors the frame to match what's shown on screen (the live <video>
+  // is CSS-mirrored for a natural selfie view, but the underlying decoded
+  // frames are not — so without this the download would look flipped
+  // compared to the preview).
+  async function exportVideoWithStickers(){
+    const video = document.getElementById('previewVideo');
+    const downloadBtn = document.getElementById('downloadVideoBtn');
+    if(!video.src){ return; }
+
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = 'Rendering…';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+
+    const stream = canvas.captureStream(30);
+    let mimeType = 'video/webm';
+    if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('video/webm;codecs=vp9')){
+      mimeType = 'video/webm;codecs=vp9';
+    }
+    let exportRecorder;
+    try{ exportRecorder = new MediaRecorder(stream, { mimeType }); }
+    catch(e){ exportRecorder = new MediaRecorder(stream); }
+    const chunks = [];
+    exportRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size > 0) chunks.push(e.data); };
+
+    function drawFrame(){
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+      ctx.restore();
+      stickers.forEach(s=>{
+        const fontSize = s.sizePct * canvas.width;
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(s.emoji, s.xPct * canvas.width, s.yPct * canvas.height);
+      });
+    }
+
+    const wasLooping = video.loop;
+    video.loop = false;
+
+    await new Promise(resolve=>{
+      let rafId;
+      exportRecorder.onstop = ()=>{
+        const blob = new Blob(chunks, { type: exportRecorder.mimeType || 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+        a.download = `wake-and-move-${stamp}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=> URL.revokeObjectURL(url), 4000);
+
+        video.loop = wasLooping;
+        video.currentTime = 0;
+        if(wasLooping) video.play().catch(()=>{});
+
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = '⬇ Download video';
+        resolve();
+      };
+      video.onended = ()=>{
+        cancelAnimationFrame(rafId);
+        try{ exportRecorder.stop(); }catch(e){ /* already stopped */ }
+      };
+      function loop(){
+        if(video.paused || video.ended) return;
+        drawFrame();
+        rafId = requestAnimationFrame(loop);
+      }
+      video.currentTime = 0;
+      exportRecorder.start();
+      video.play().then(loop).catch(()=>{
+        // Autoplay somehow blocked even on a user gesture — bail out cleanly.
+        try{ exportRecorder.stop(); }catch(e){}
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = '⬇ Download video';
+        resolve();
+      });
+    });
+  }
+  document.getElementById('downloadVideoBtn').addEventListener('click', exportVideoWithStickers);
+
   document.getElementById('exitPreviewBtn').addEventListener('click', goHome);
   document.getElementById('closePreviewBtn').addEventListener('click', goHome);
   document.getElementById('retakeBtn').addEventListener('click', ()=>{
     if(window.__lastRecordingUrl) URL.revokeObjectURL(window.__lastRecordingUrl);
     window.__lastRecordingUrl = null;
     window.__lastRecordingBlob = null;
+    resetStickers();
     showScreen('dance');
     resetDanceState();
     const retakeGenre = (currentAlarm && currentAlarm.musicGenre) || 'energetic';

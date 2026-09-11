@@ -19,7 +19,7 @@ Traditional alarms rely on willpower at the exact moment willpower is lowest. Th
 - **On-device pose detection** — MoveNet (TensorFlow.js) tracks 17 body keypoints in real time through the browser, entirely client-side
 - **Movement verification, not fixed choreography** — any sufficiently large, continuous movement counts, normalized against body scale so it works at any distance from the camera
 - **Motion-sensor handoff** — the ringing screen watches the device's accelerometer and automatically advances to the move-challenge once it detects you've picked up the phone
-- **Video capture + preview** — the whole challenge is recorded locally via `MediaRecorder`; you can preview, save, or retake before dismissing
+- **Video capture + sticker editor** — the whole challenge is recorded locally via `MediaRecorder`; afterward you can drag emoji stickers onto the clip (face-tracking-free, just manual placement) and download a new file with the stickers baked in — composited frame-by-frame onto a canvas and re-encoded client-side, no server involved
 - **Procedurally generated audio** — both the alarm tones and the background music during the challenge are synthesized in real time with the Web Audio API — no licensed or external audio files
 - **Installable PWA** — has a manifest, service worker, and app icons; can be added to a phone's home screen and opens full-screen like a native app
 - **Optional AI coach & composer** — bring your own Anthropic or OpenAI API key and two things become dynamic: the "Congratulations!" line is written live by an LLM personalized to your time/difficulty/genre, and the move-challenge music sometimes gets a freshly AI-composed 16-step track (in the exact JSON shape the existing Web Audio sequencer already knows how to play) instead of one of the five built-in tracks
@@ -67,6 +67,8 @@ It's worth being precise about this, since it's easy to wave "AI" around without
 ## Technical highlights
 
 A few decisions worth calling out beyond "it uses API X":
+
+- **Baking stickers into a downloadable video without a server.** There's no video-editing library or backend here — stickers are composited by drawing each video frame onto a `<canvas>` alongside the sticker positions, capturing that canvas as a live `MediaStream` via `canvas.captureStream()`, and recording *that* with a second `MediaRecorder` in real time as the clip plays through once. It also corrects for a subtlety: the live preview is CSS-mirrored for a natural selfie view, but the underlying decoded video frames aren't — so the canvas draw step re-applies that mirror so the downloaded file matches what was actually seen on screen.
 
 - **Scale-invariant movement scoring** — rather than raw pixel displacement, movement is measured as average keypoint displacement *normalized by torso length* (shoulder-to-hip distance). Without this, the same physical movement registers as a bigger signal when close to the camera than far away, making a single threshold unusable.
 - **Frame-rate-independent progress accumulation** — progress fills based on elapsed wall-clock time (`dt`) rather than a fixed per-frame increment, with `dt` clamped to avoid a huge jump if the tab was backgrounded and `requestAnimationFrame` paused.
