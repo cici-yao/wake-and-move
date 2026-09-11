@@ -696,6 +696,11 @@
     <h1>Wake your <span>brain</span> up</h1>
     <div class="sub">Answer the riddle correctly to dismiss the alarm — no camera needed.</div>
 
+    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <div class="card-label" style="margin:0;">Now playing <span id="trackNameRiddle" style="color:var(--text-dim); font-weight:400;"></span></div>
+      <button class="btn ghost sm" id="musicToggleBtnRiddle" style="padding:5px 10px; font-size:12px;">🔊 Music</button>
+    </div>
+
     <div class="card">
       <div id="riddleText" class="riddle-text">🧠 Thinking of a good one…</div>
       <div class="field" style="margin-top:16px; margin-bottom:0;">
@@ -1391,6 +1396,9 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     stopAlarmLoop();
     showScreen('riddle');
     loadRiddleScreen();
+    const genre = (currentAlarm && currentAlarm.musicGenre) || 'energetic';
+    startDanceMusic(genre);
+    attemptAiTrackSwap(genre);
   }
 
   function loadRiddleScreen(){
@@ -1617,8 +1625,11 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     if(musicInterval) clearInterval(musicInterval);
     scheduleMusicStep();
     musicInterval = setInterval(scheduleMusicStep, STEP_DUR*1000);
-    const trackNameEl = document.getElementById('trackName');
-    if(trackNameEl) trackNameEl.textContent = '· ' + currentTrack.name;
+    const label = '· ' + currentTrack.name;
+    ['trackName','trackNameRiddle'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.textContent = label;
+    });
   }
 
   // Starts playing a local track immediately (zero latency — the person
@@ -1629,25 +1640,35 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
   async function attemptAiTrackSwap(genre){
     const aiTrack = await tryGenerateAITrack(genre);
     if(!aiTrack) return;
-    if(!screens.dance.classList.contains('active') || !musicInterval || alarmSolved) return;
+    const musicScreenActive = screens.dance.classList.contains('active') || screens.riddle.classList.contains('active');
+    if(!musicScreenActive || !musicInterval || alarmSolved) return;
     currentTrack = aiTrack;
     STEP_DUR = 60/currentTrack.bpm/4;
     musicStep = 0;
     clearInterval(musicInterval);
     scheduleMusicStep();
     musicInterval = setInterval(scheduleMusicStep, STEP_DUR*1000);
-    const trackNameEl = document.getElementById('trackName');
-    if(trackNameEl) trackNameEl.textContent = '· ✨ ' + currentTrack.name + ' (AI-composed)';
+    const label = '· ✨ ' + currentTrack.name + ' (AI-composed)';
+    ['trackName','trackNameRiddle'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.textContent = label;
+    });
   }
   function stopDanceMusic(){
     if(musicInterval) clearInterval(musicInterval);
     musicInterval = null;
   }
-  document.getElementById('musicToggleBtn').addEventListener('click', (e)=>{
+  function toggleMusicMute(){
     musicOn = !musicOn;
     if(musicMasterGain) musicMasterGain.gain.value = musicOn ? 0.45 : 0;
-    e.target.textContent = musicOn ? '🔊 Music' : '🔇 Music';
-  });
+    const label = musicOn ? '🔊 Music' : '🔇 Music';
+    ['musicToggleBtn','musicToggleBtnRiddle'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.textContent = label;
+    });
+  }
+  document.getElementById('musicToggleBtn').addEventListener('click', toggleMusicMute);
+  document.getElementById('musicToggleBtnRiddle').addEventListener('click', toggleMusicMute);
 
 
   /* ============================================================
@@ -1753,6 +1774,7 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
   // asks the AI coach for a personalized one in the background and swaps
   // it in if it arrives while the person is still on this screen.
   function showCompletionScreen({ elapsedSeconds, mode, hasVideo }){
+    stopDanceMusic();
     document.getElementById('completeSeconds').textContent = elapsedSeconds;
     const encourageEl = document.getElementById('encourageLine');
     encourageEl.textContent = ENCOURAGEMENTS[Math.floor(Math.random()*ENCOURAGEMENTS.length)];
@@ -1788,8 +1810,6 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
   }
 
   function finishChallenge(elapsedSeconds){
-    stopDanceMusic();
-
     // Show the celebration screen immediately — don't make the person
     // wait on video encoding (or an AI call) before they get any feedback.
     showCompletionScreen({ elapsedSeconds, mode: 'dance', hasVideo: true });
