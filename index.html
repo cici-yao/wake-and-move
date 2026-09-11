@@ -657,7 +657,7 @@
           <button type="button" class="segmented-option" data-value="medium">Medium<small>8s</small></button>
           <button type="button" class="segmented-option" data-value="hard">Hard<small>10s</small></button>
         </div>
-        <div class="note" style="margin-top:10px;">How long you need to keep moving before the alarm gives up on you.</div>
+        <div class="note" style="margin-top:10px;">Sets how long you need to move (dance mode) and how many riddles you need to solve back-to-back (brain-teaser mode): Easy = 1 riddle, Medium = 3, Hard = 5.</div>
       </div>
       <div class="field" style="margin-bottom:0;">
         <label class="field-label">Move-challenge music</label>
@@ -684,7 +684,7 @@
     <div class="ring-clock" id="ringClock">00:00</div>
     <div class="ring-label" id="ringLabel">Alarm</div>
     <button class="btn" id="continueManualBtn">I'm up — let's move</button>
-    <button class="btn ghost" id="tryRiddleBtn" style="margin-top:10px;">🧠 Solve a riddle instead</button>
+    <button class="btn ghost" id="tryRiddleBtn" style="margin-top:10px;">🧠 Solve brain teasers instead</button>
     <div class="ring-hint" id="ringHint">Pick up your phone or start moving — we'll detect it and take you to the move challenge automatically.</div>
   </div>
 </div>
@@ -694,7 +694,9 @@
   <div class="wrap">
     <div class="kicker">Alarm ringing</div>
     <h1>Wake your <span>brain</span> up</h1>
-    <div class="sub">Answer the riddle correctly to dismiss the alarm — no camera needed.</div>
+    <div class="sub">Answer correctly, back-to-back, to dismiss the alarm — no camera needed.</div>
+    <div class="card-label" id="riddleProgressText">Question 1 of 3</div>
+    <div class="progress-track" style="margin-bottom:14px;"><div class="progress-fill" id="riddleProgressFill"></div></div>
 
     <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:14px;">
       <div class="card-label" style="margin:0;">Now playing <span id="trackNameRiddle" style="color:var(--text-dim); font-weight:400;"></span></div>
@@ -896,6 +898,7 @@
   const soundNames = { chimes:'Chimes', signal:'Signal', waves:'Waves', pulse:'Pulse' };
   const difficultyLabels = { easy:'Easy', medium:'Medium', hard:'Hard' };
   const difficultySeconds = { easy:5, medium:8, hard:10 };
+  const difficultyRiddleCount = { easy:1, medium:3, hard:5 };
   const genreLabels = { energetic:'Energetic', lyrical:'Lyrical', playful:'Playful', retro:'Retro' };
 
   const alarmListEl = document.getElementById('alarmList');
@@ -1133,13 +1136,13 @@
   }
 
   async function generateRiddle(){
-    const prompt = `Give me one short, clever brain-teaser riddle (the kind meant to wake someone's brain up in the morning) — a classic lateral-thinking riddle or wordplay riddle, not trivia. Reply with ONLY the riddle question itself, one or two sentences, no answer, no preamble, no quotation marks.`;
+    const prompt = `Give me ONE short brain-warming morning question for someone who just woke up. Randomly pick ONE of these types each time, varying it: (a) a classic lateral-thinking or wordplay riddle, or (b) a simple arithmetic question (addition or subtraction of numbers, e.g. "What is 47 minus 18?"). Reply with ONLY the question itself, one sentence, no answer, no preamble, no quotation marks, and don't say which type it is.`;
     const text = await callLLM(prompt, { maxTokens: 80, timeoutMs: 8000 });
     return text ? text.replace(/^["']|["']$/g, '') : null;
   }
 
   async function judgeRiddleAnswer(riddle, userAnswer){
-    const prompt = `Riddle: "${riddle}"\nSomeone answered: "${userAnswer}"\nIs that answer correct, or close enough to count (allow for phrasing/typos/synonyms)? Reply with ONLY a JSON object, no markdown fences: {"correct": true or false, "feedback": "one short sentence, under 15 words — if correct, something congratulatory; if wrong, a gentle hint, not the answer itself"}`;
+    const prompt = `Question: "${riddle}"\nSomeone answered: "${userAnswer}"\nIs that answer correct, or close enough to count (allow for phrasing/typos/synonyms, and for numeric answers accept digits or words)? Reply with ONLY a JSON object, no markdown fences: {"correct": true or false, "feedback": "one short sentence, under 15 words — if correct, something congratulatory; if wrong, a gentle hint, not the answer itself"}`;
     const raw = await callLLM(prompt, { maxTokens: 100, timeoutMs: 8000 });
     if(!raw) return null;
     try{
@@ -1389,12 +1392,25 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
      ============================================================ */
   let currentRiddle = null;
   let riddleStartTime = null;
+  let riddleTargetCount = 3;
+  let riddleSolvedCount = 0;
+
+  function updateRiddleProgress(){
+    document.getElementById('riddleProgressText').textContent =
+      `Question ${riddleSolvedCount + 1} of ${riddleTargetCount}`;
+    const pct = (riddleSolvedCount / riddleTargetCount) * 100;
+    document.getElementById('riddleProgressFill').style.width = pct + '%';
+  }
 
   function proceedToRiddle(){
     clearInterval(ringClockInterval);
     detachMotionListener();
     stopAlarmLoop();
+    riddleTargetCount = difficultyRiddleCount[currentAlarm && currentAlarm.difficulty] || 3;
+    riddleSolvedCount = 0;
+    riddleStartTime = performance.now();
     showScreen('riddle');
+    updateRiddleProgress();
     loadRiddleScreen();
     const genre = (currentAlarm && currentAlarm.musicGenre) || 'energetic';
     startDanceMusic(genre);
@@ -1403,7 +1419,6 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
 
   function loadRiddleScreen(){
     currentRiddle = null;
-    riddleStartTime = performance.now();
     const riddleTextEl = document.getElementById('riddleText');
     const answerInput = document.getElementById('riddleAnswer');
     const submitBtn = document.getElementById('submitRiddleBtn');
@@ -1420,7 +1435,7 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
     generateRiddle().then(riddle=>{
       if(!screens.riddle.classList.contains('active')) return; // navigated away already
       if(!riddle){
-        riddleTextEl.textContent = "Couldn't reach the AI to generate a riddle — check your API key in Settings, or your connection.";
+        riddleTextEl.textContent = "Couldn't reach the AI to generate a question — check your API key in Settings, or your connection.";
         feedbackEl.textContent = 'You can try again, or switch to the dance challenge below.';
         newBtn.disabled = false;
         return;
@@ -1452,9 +1467,17 @@ Reply with ONLY a single JSON object, no markdown fences, no commentary, in exac
       return;
     }
     if(result.correct){
-      feedbackEl.textContent = result.feedback || 'Correct!';
-      const elapsed = riddleStartTime ? Math.round((performance.now() - riddleStartTime)/1000) : 0;
-      setTimeout(()=> showCompletionScreen({ elapsedSeconds: elapsed, mode: 'riddle', hasVideo: false }), 600);
+      riddleSolvedCount++;
+      if(riddleSolvedCount >= riddleTargetCount){
+        feedbackEl.textContent = result.feedback || 'Correct! That\'s all of them.';
+        updateRiddleProgress();
+        const elapsed = riddleStartTime ? Math.round((performance.now() - riddleStartTime)/1000) : 0;
+        setTimeout(()=> showCompletionScreen({ elapsedSeconds: elapsed, mode: 'riddle', hasVideo: false }), 600);
+      } else {
+        feedbackEl.textContent = (result.feedback || 'Correct!') + ' Next one…';
+        updateRiddleProgress();
+        setTimeout(loadRiddleScreen, 900);
+      }
     } else {
       feedbackEl.textContent = result.feedback || 'Not quite — try again.';
       submitBtn.disabled = false;

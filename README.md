@@ -23,7 +23,7 @@ Traditional alarms rely on willpower at the exact moment willpower is lowest. Th
 - **Procedurally generated audio** — both the alarm tones and the background music during the challenge are synthesized in real time with the Web Audio API — no licensed or external audio files
 - **Installable PWA** — has a manifest, service worker, and app icons; can be added to a phone's home screen and opens full-screen like a native app
 - **Optional AI coach & composer** — bring your own Anthropic or OpenAI API key and two things become dynamic: the "Congratulations!" line is written live by an LLM personalized to your time/difficulty/genre, and the move-challenge music sometimes gets a freshly AI-composed 16-step track (in the exact JSON shape the existing Web Audio sequencer already knows how to play) instead of one of the five built-in tracks
-- **Brain-teaser alternative** — don't want the camera on? Solve an AI-generated riddle instead. The alarm screen offers both paths; the riddle is generated fresh each time and a second LLM call judges whether your typed answer counts, allowing for phrasing, typos, and synonyms rather than an exact string match
+- **Brain-teaser alternative** — don't want the camera on? Solve AI-generated brain teasers instead (a mix of lateral-thinking riddles and simple arithmetic). The alarm's difficulty setting controls how many you need to solve back-to-back — Easy: 1, Medium: 3, Hard: 5 — and a second LLM call judges each typed answer, allowing for phrasing, typos, and synonyms rather than an exact string match
 
 ## Tech stack
 
