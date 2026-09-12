@@ -673,7 +673,7 @@
   <div class="wrap">
     <div class="kicker">Optional</div>
     <h1>AI <span>coach</span></h1>
-    <div class="sub">Give it your own API key and two things change: the "Congratulations!" line gets written live by a real language model, and the move-challenge music sometimes gets freshly composed instead of picked from the built-in tracks. Skip this entirely and the app works exactly the same, just with the built-in lines and tracks.</div>
+    <div class="sub">Enter your own API key to use your own account for the AI features below. Leave it blank and the app tries a shared demo key configured by whoever deployed this site instead — if that's not set up either, everything falls back to the built-in lines and tracks. Nothing ever breaks either way.</div>
 
     <div class="card">
       <div class="field">
@@ -1196,9 +1196,36 @@
   // Shared low-level call used by both the encouragement line and the
   // AI-composed track. Returns the raw text response, or null on any
   // failure — callers are responsible for parsing/validating it.
+  // Falls back to /.netlify/functions/ai-proxy when the person hasn't
+  // entered their own key — that endpoint holds a shared key on the
+  // server side (see netlify/functions/ai-proxy.js), so this app can
+  // still offer working AI features to people who never open Settings,
+  // without that shared key ever appearing in this file or in the browser.
+  async function callSharedProxy(prompt, maxTokens, timeoutMs){
+    const controller = new AbortController();
+    const timeoutId = setTimeout(()=> controller.abort(), timeoutMs);
+    try{
+      const res = await fetch('/.netlify/functions/ai-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, maxTokens }),
+        signal: controller.signal,
+      });
+      if(!res.ok) return null; // e.g. 404 if this isn't deployed on Netlify, or the function isn't configured yet
+      const data = await res.json();
+      return data && data.text ? data.text.trim() : null;
+    }catch(e){
+      return null;
+    }finally{
+      clearTimeout(timeoutId);
+    }
+  }
+
   async function callLLM(prompt, { maxTokens = 40, timeoutMs = 8000 } = {}){
     const settings = loadAiSettings();
-    if(!settings || !settings.apiKey) return null;
+    if(!settings || !settings.apiKey){
+      return callSharedProxy(prompt, maxTokens, timeoutMs);
+    }
     const controller = new AbortController();
     const timeoutId = setTimeout(()=> controller.abort(), timeoutMs);
     try{

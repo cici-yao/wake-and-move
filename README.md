@@ -26,7 +26,7 @@ Traditional alarms rely on willpower at the exact moment willpower is lowest. Th
 - **Video capture + sticker editor** — the whole challenge is recorded locally via `MediaRecorder`; afterward you can drag emoji stickers onto the clip, including several that automatically follow your eyes/nose or sit on top of your head (reusing the same MoveNet pose model from recording, rather than a separate face-landmark model), then download a new file with everything baked in — composited frame-by-frame onto a canvas and re-encoded client-side, no server involved
 - **Procedurally generated audio** — both the alarm tones and the background music during the challenge are synthesized in real time with the Web Audio API — no licensed or external audio files
 - **Installable PWA** — has a manifest, service worker, and app icons; can be added to a phone's home screen and opens full-screen like a native app
-- **Optional AI coach & composer** — bring your own Anthropic, OpenAI, or DeepSeek API key and three things become dynamic: the "Congratulations!" line is written live by an LLM personalized to how the alarm was dismissed, the move-challenge music sometimes gets a freshly AI-composed 16-step track (in the exact JSON shape the existing Web Audio sequencer already knows how to play) instead of one of the five built-in tracks, and scrolling danmaku-style hype comments fly across the screen during the dance challenge, generated as a batch at the start of each attempt
+- **Optional AI coach & composer** — bring your own Anthropic, OpenAI, or DeepSeek API key and three things become dynamic: the "Congratulations!" line is written live by an LLM personalized to how the alarm was dismissed, the move-challenge music sometimes gets a freshly AI-composed 16-step track (in the exact JSON shape the existing Web Audio sequencer already knows how to play) instead of one of the five built-in tracks, and scrolling danmaku-style hype comments fly across the screen during the dance challenge, generated as a batch at the start of each attempt. If you don't have your own key, the app tries a shared demo key configured server-side (see `netlify/functions/ai-proxy.js`) before falling back to the built-in lines and tracks — nothing ever breaks.
 
 ## Tech stack
 
@@ -94,6 +94,10 @@ wake-and-move/
 ├── manifest.json        PWA manifest (name, icons, launch behavior)
 ├── sw.js                 service worker (offline app-shell caching)
 ├── icons/                app icons, generated at several sizes
+├── netlify.toml           tells Netlify where to find the serverless function below
+├── netlify/
+│   └── functions/
+│       └── ai-proxy.js    optional shared-key proxy for the AI features (see Deployment)
 ├── supabase/
 │   └── schema.sql        database schema for the planned backend (alarms, sessions, RLS policies)
 ├── config.example.js      template for Supabase project keys — copy to config.js and fill in your own
@@ -115,7 +119,16 @@ Then open the printed `localhost` address in your browser.
 
 ## Deployment
 
-Static site, no build step. Connect this GitHub repo to [Netlify](https://netlify.com) or [Vercel](https://vercel.com) and it deploys automatically on every push.
+Static site, no build step. Connect this GitHub repo to [Netlify](https://netlify.com) and it deploys automatically on every push — Netlify also picks up `netlify/functions/` automatically thanks to `netlify.toml`, so the serverless proxy deploys alongside the static files with no extra steps. (Vercel works for the static site too, but the function would need to be ported to Vercel's function format.)
+
+### Optional: shared AI key (so visitors without their own key still get the AI features)
+
+1. In the Netlify dashboard: **Site settings → Environment variables → Add a variable**
+2. Add `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` / `DEEPSEEK_API_KEY`) with your real key as the value
+3. If not using Anthropic, also set `AI_PROXY_PROVIDER` to `openai` or `deepseek`
+4. Redeploy (environment variable changes only take effect on the next deploy)
+
+The key only ever lives in Netlify's environment — never in this repo, never sent to the browser. See the comments at the top of `netlify/functions/ai-proxy.js` for the full explanation, including the cost/abuse tradeoff of sharing one key across every visitor.
 
 ## Roadmap
 
